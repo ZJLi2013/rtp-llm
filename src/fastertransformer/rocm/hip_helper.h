@@ -20,16 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
-#include <hip/hip_runtime.h>
-#include <hip/runtime_api.h>
-#include <rocm_smi/rocm_smi.h>
+#include "hip/hip_runtime.h"
+#include "hip/hip_runtime_api.h"
+#include "rocm_smi/rocm_smi.h"
 
 
 #ifndef checkHipErrors
 #define checkHipErrors(err) __checkHipErrors(err, __FILE__, __LINE__)
 
 inline void __checkHipErrors(hipError_t err, const char *file, const int line) {
-  if (HIP_SUCCESS != err) {
+  if (hipSuccess != err) {
     const char *errorStr = hipGetErrorString(err);
     fprintf(stderr,
             "checkHipErrors() HIP API error = %04d \"%s\" from file <%s>, "
@@ -42,28 +42,27 @@ inline void __checkHipErrors(hipError_t err, const char *file, const int line) {
 
 hipError_t getSetDevice(int i_device, int* o_device){
     int         current_dev_id = 0;
-    hipError_t  err            = HIP_SUCCESS;
     if (o_device != null){
-      error = hipGetDevice(&current_dev_id);
-      if(err != HIP_SUCCESS){
+      err = hipGetDevice(&current_dev_id);
+      if(err != hipSuccess){
         return err ;
       }
       if (current_dev_id == i_device){
         *o_device = i_device ;
       }else{
         err = hipSetDevice(i_device);
-        if(err != HIP_SUCCESS){
+        if(err != hipSuccess){
           return err; 
         }
         *o_device = current_dev_id ;
       }
     }else{
       err = hipSetDevice(i_device);
-      if(err != HIP_SUCCESS){
+      if(err != hipSuccess){
         return err; 
       }
     }
-    return HIP_SUCCESS; 
+    return hipSuccess; 
 }
 
 #ifndef checkRsmiErrors
@@ -71,11 +70,14 @@ hipError_t getSetDevice(int i_device, int* o_device){
 
 inline void __checkRsmiErrors(rsmi_status_t status){
   if (RSMI_STATUS_SUCCESS != status){
-    const char* errorStr = rsmi_status_string(status); 
+    // const char* errorStr = rsmi_status_string(status); 
+    const char* errorStr = nullptr ; 
+    rsmi_status_string(status, &errorStr);
     fprintf(stderr, "Rsmi Runtime Error: %s \n", errorStr);
     exit(EXIT_FAILURE);
   }
 }
+#endif 
 
 #define sync_check_rocm_error() syncAndCheck(__FILE__, __LINE__)
 
@@ -84,7 +86,7 @@ inline void syncAndCheck(const char* const file, int const line){
   hipError_t result = hipGetLastError();
   if (result){
     throw std::runtime_error(std::string("[ERROR] ROCM runtime error: ") + (hipGetErrorString(result)) + " "
-                             + file + ":" + std:to_string(line) + " \n")
+                             + file + ":" + std::to_string(line) + " \n");
   }
 }
 

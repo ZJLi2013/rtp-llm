@@ -1,7 +1,7 @@
 #pragma once 
 #include "src/fastertransformer/core/allocator.h"
 #include "src/fastertransformer/rocm/hip_helper.h"
-#include <mutext>
+#include <mutex>
 
 class IRocmAllocator: virtual public IAllocator {
 public:
