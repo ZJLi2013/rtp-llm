@@ -7,13 +7,14 @@ include_directories(${PROJECT_DIR})
 
 # Specify source files for devices_module 
 file(GLOB SOURCES *.cc)
+message({SOURCES})
 
 # Specify header files for devices_module 
 file(GLOB HEADERS *.h)
 message({HEADERS})
 
 # Add amd_impl subdirectories  
-# add_subdirectory(amd_impl)
+add_subdirectory(amd_impl)
 
 # Create a library for devices_module 
 add_library(devices_module ${SOURCES})

@@ -1,10 +1,15 @@
 
-set(SOURCE 
-    RocmDevice.cc
+# TODO: 
+set(PROJECT_DIR /workspace/)
+# Define global include path 
+include_directories(${PROJECT_DIR})
+
+set(SOURCES 
+    ${CMAKE_CURRENT_SOURCE_DIR}/RocmDevice.cc
     )
 
 set(HEADERS
-    RocmDevice.h 
+    ${CMAKE_CURRENT_SOURCE_DIR}/RocmDevice.h 
     )
 
 if(${__HIP_ENABLE_PCH})
@@ -20,13 +25,18 @@ if(UNIX)
 endif()
 
 # Find hip
-find_package(hip)
+find_package(hip REQUIRED)
+
+# Set HIPCC compiler and linker
+set(CMAKE_CXX_COMPILER ${HIP_HIPCC_EXECUTABLE})
+set(CMAKE_CXX_LINKER   ${HIP_HIPCC_EXECUTABLE})
 
 # Create a lib for core module 
-add_library(amd_impl_module ${SOURCE})
+add_library(amd_impl_module ${SOURCES})
 
 # Include headers 
-target_include_directories(amd_impl_module PUBLIC ${HEADERS})
+target_include_directories(amd_impl_module PUBLIC ${HEADERS} ${ROCM_PATH}/include)
 
 # specify dependencies 
-target_link_libraries(amd_impl_module PUBLIC devcies_moduel rocm_module utils_module)
+target_link_libraries(amd_impl_module PUBLIC devices_module rocm_module util_module hip::host)
+
