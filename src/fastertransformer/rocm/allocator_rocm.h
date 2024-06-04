@@ -1,6 +1,7 @@
 #pragma once 
 #include "src/fastertransformer/core/allocator.h"
 #include "src/fastertransformer/rocm/hip_helper.h"
+#include "src/fastertransformer/utils/assert_utils.h"
 #include <mutex>
 
 

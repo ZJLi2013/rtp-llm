@@ -32,7 +32,7 @@ void* IRocmAllocator::reMalloc(void* ptr, size_t size, const bool is_set_zero){
     }
 }
 
-void ICudaAllocator::memSet(void* ptr, const int val, const size_t size) const {
+void IRocmAllocator::memSet(void* ptr, const int val, const size_t size) const {
     checkHipErrors(hipMemsetAsync(ptr, val, size, stream_));
 }
 
@@ -45,7 +45,7 @@ Allocator<AllocatorType::ROCM>::Allocator(int device_id) : PurePointerRocmAlloca
     hipMemPool_t mempool ; 
     checkHipErrors(hipDeviceGetDefaultMemPool(&mempool, device_id));
     hipMemAccessDesc desc = {} ;
-    int peer_access_avilable = 0 ; 
+    int peer_access_available = 0 ; 
     for (int i = 0; i < device_count; i++) {
         if (i == device_id) {
             continue;
@@ -73,7 +73,7 @@ Allocator<AllocatorType::ROCM>::~Allocator(){
     }  
 }
 
-Allocator<AllocatorType::ROCM>::malloc(size_t size, const bool is_set_zero){
+void* Allocator<AllocatorType::ROCM>::malloc(size_t size, const bool is_set_zero){
     if (size == 0) {
         return nullptr;
     }
@@ -88,22 +88,22 @@ Allocator<AllocatorType::ROCM>::malloc(size_t size, const bool is_set_zero){
     checkHipErrors(getSetDeviceRocm(o_device));
     std:lock_guard<std::mutex> lock(lock_);
     // following insert() only func once a thread
-    pointer_mapping_->insert(ptr, size); 
+    pointer_mapping_->insert({ptr, size}); 
 
     return ptr;  
 }
 
-Allocator<AllocatorType::ROCM>::free(void** ptr){
+void Allocator<AllocatorType::ROCM>::free(void** ptr){
     void* address = *ptr;
     if (*ptr != nullptr) {
         int o_device = 0 ;
         std::lock_guard<std::mutex> lock(lock_);
         if(pointer_mapping_->count(address)){
-            checkHipErrors(getSetDeviceRocm(device_id, &o_device));
+            checkHipErrors(getSetDeviceRocm(device_id_, &o_device));
             checkHipErrors(hipFreeAsync(*ptr, stream_));
             // hipStreamSynchronize(stream_);
             checkHipErrors(getSetDeviceRocm(o_device));
-            pointer_mapping_->release(address); 
+            pointer_mapping_->erase(address); 
         }else {
             FT_LOG_WARNING("pointer_mapping_ does not have information of ptr at %p.", address);
         }
@@ -123,7 +123,7 @@ Allocator<AllocatorType::ROCM_HOST>::~Allocator() {
     }
 }
 
-Allocator<AllocatorType::ROCM_HOST>::malloc(size_t size, const bool is_set_zero){
+void* Allocator<AllocatorType::ROCM_HOST>::malloc(size_t size, const bool is_set_zero){
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     if (size == 0) {
         return nullptr;
@@ -142,7 +142,7 @@ Allocator<AllocatorType::ROCM_HOST>::malloc(size_t size, const bool is_set_zero)
     return ptr;
 }
 
-Allocator<AllocatorType::ROCM_HOST>::free(void** ptr){
+void Allocator<AllocatorType::ROCM_HOST>::free(void** ptr){
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     void* address = *ptr;
     if (*ptr != nullptr) {
