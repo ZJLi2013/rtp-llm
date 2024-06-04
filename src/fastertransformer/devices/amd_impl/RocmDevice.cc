@@ -1,11 +1,11 @@
 
-#include "src/fastertransformer/device/amd_impl/RocmDevice.h"
+#include "src/fastertransformer/devices/amd_impl/RocmDevice.h"
 #include "src/fastertransformer/devices/DeviceFactory.h"
-#include "src/fastertransformer/rocm/hip_helper.h"
 #include "src/fastertransformer/rocm/allocator_rocm.h"
 #include "src/fastertransformer/utils/logger.h"
 
-
+namespace fastertransformer {
+    
 static const size_t DEFAULT_MAX_BATCH_SIZE = 256;
 
 RocmDevice::RocmDevice(const DeviceInitParams& params) : DeviceBase(params){
@@ -82,3 +82,4 @@ DeviceStatus RocmDevice::getDeviceStatus(){
 RTP_LLM_REGISTER_DEVICE(Rocm);
 
 
+}; // namespace fastertransformer
