@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include "hip/hip_runtime_api.h"
 #include "rocm_smi/rocm_smi.h"
 
+namespace fastertransformer {
 
 #ifndef checkHipErrors
 #define checkHipErrors(err) __checkHipErrors(err, __FILE__, __LINE__)
@@ -106,3 +107,4 @@ inline rsmi_status_t  rocmDeviceGetUtilizationRates(uint32_t device_id, rocmUtil
   return RSMI_STATUS_SUCCESS ; 
 }
 
+}  // namespace fastertransformer

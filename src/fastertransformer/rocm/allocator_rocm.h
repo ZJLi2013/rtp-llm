@@ -3,6 +3,11 @@
 #include "src/fastertransformer/rocm/hip_helper.h"
 #include <mutex>
 
+
+using namespace std ; 
+
+namespace fastertransformer { 
+
 class IRocmAllocator: virtual public IAllocator {
 public:
     IRocmAllocator(int device_id)
@@ -21,7 +26,7 @@ public:
         return stream_ ;
     } ; 
 
-    void reMalloc(void* ptr, size_t size, const bool is_set_zero=false) override ;
+    void* reMalloc(void* ptr, size_t size, const bool is_set_zero=false) override ;
 
     void memSet(void* ptr, const int val, const size_t size) const override ;
 
@@ -86,3 +91,5 @@ class Allocator<AllocatorType::ROCM_HOST>: public PurePointerRocmAllocator, publ
         void* malloc(size_t size, const bool is_set_zero=false) override ;
         void free(void** ptr) override ;
 };
+
+} // namespace fastertransformer 

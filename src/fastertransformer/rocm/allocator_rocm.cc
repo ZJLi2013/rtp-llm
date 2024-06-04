@@ -2,6 +2,9 @@
 #include "src/fastertransformer/rocm/hip_helper.h"
 #include <mutex>
 
+namespace fastertransformer { 
+
+
 void* IRocmAllocator::reMalloc(void* ptr, size_t size, const bool is_set_zero){
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     size              = ((size + 31) / 32) * 32;  // make the buffer align with 32 bytes
@@ -158,3 +161,4 @@ Allocator<AllocatorType::ROCM_HOST>::free(void** ptr){
     return;  
 }
 
+}  // namespace fastertransformer
