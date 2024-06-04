@@ -40,6 +40,32 @@ inline void __checkHipErrors(hipError_t err, const char *file, const int line) {
 }
 #endif
 
+hipError_t getSetDevice(int i_device, int* o_device){
+    int         current_dev_id = 0;
+    hipError_t  err            = HIP_SUCCESS;
+    if (o_device != null){
+      error = hipGetDevice(&current_dev_id);
+      if(err != HIP_SUCCESS){
+        return err ;
+      }
+      if (current_dev_id == i_device){
+        *o_device = i_device ;
+      }else{
+        err = hipSetDevice(i_device);
+        if(err != HIP_SUCCESS){
+          return err; 
+        }
+        *o_device = current_dev_id ;
+      }
+    }else{
+      err = hipSetDevice(i_device);
+      if(err != HIP_SUCCESS){
+        return err; 
+      }
+    }
+    return HIP_SUCCESS; 
+}
+
 #ifndef checkRsmiErrors
 #define checkRsmiErrors(err) __checkRsmiErrors(err)
 

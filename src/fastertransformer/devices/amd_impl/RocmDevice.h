@@ -1,6 +1,7 @@
 #pragma once 
 
-#include <stdint.h>
+#include <hip_runtime.h>
+#include <unistd.h>
 
 class RocmDevice : public DeviceBase {
     public:
@@ -16,9 +17,8 @@ class RocmDevice : public DeviceBase {
         void syncAndCheck() override ; 
     
     private: 
-
         hipStream_t stream_ ; 
         hipblasHandle_t hipblas_handle_ ; 
         hipDeviceProp_t device_prop_ ;
-        BufferPtr rocrandstate_buf_; // for sampler use.
+        // BufferPtr rocrandstate_buf_; // for sampler use.
 }

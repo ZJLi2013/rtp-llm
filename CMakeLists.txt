@@ -1,0 +1,57 @@
+# Copyright (c) 2020 - 2023 Advanced Micro Devices, Inc. All Rights Reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+project(rtpRocm)
+
+cmake_minimum_required(VERSION 3.10)
+
+if(${__HIP_ENABLE_PCH})
+  add_definitions(-D__HIP_ENABLE_PCH)
+endif()
+
+if(UNIX)
+  if(NOT DEFINED ROCM_PATH)
+    set(ROCM_PATH "/opt/rocm" CACHE STRING "Default ROCM installation directory.")
+  endif()
+  # Search for rocm in common locations
+  list(APPEND CMAKE_PREFIX_PATH ${ROCM_PATH})
+endif()
+
+# Find hip
+find_package(hip)
+
+# add FasterTransformer subdirectories  
+set(FT_DIR ${PROJECT_SOURCE_DIR}/src/fastertransformer/)
+add_subdirectory(${FT_DIR}/core)
+add_subdirectory(${FT_DIR}/devices)
+add_subdirectory(${FT_DIR}/rocm)
+add_subdirectory(${FT_DIR}/utils)
+
+# Set compiler and linker
+set(CMAKE_CXX_COMPILER ${HIP_HIPCC_EXECUTABLE})
+set(CMAKE_CXX_LINKER   ${HIP_HIPCC_EXECUTABLE})
+
+# Create the excutable
+add_executable(rocm_test ${FT_DIR}/devices/amd_impl/test/test.cc)
+
+# Link with HIP
+target_link_libraries(rocm_test core_module devices_module rocm_module utils_module hip::host)
+
+

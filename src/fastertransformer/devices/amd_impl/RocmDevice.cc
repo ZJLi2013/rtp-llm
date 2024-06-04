@@ -1,8 +1,9 @@
 
-#include "rocm/hip_helper.h"
-#include "rocm/allocator_rocm.h"
-#include <hip_runtime.h>
-#include <unistd.h>
+#include "src/fastertransformer/device/amd_impl/RocmDevice.h"
+#include "src/fastertransformer/devices/DeviceFactory.h"
+#include "src/fastertransformer/rocm/hip_helper.h"
+#include "src/fastertransformer/rocm/allocator_rocm.h"
+#include "src/fastertransformer/utils/logger.h"
 
 
 static const size_t DEFAULT_MAX_BATCH_SIZE = 256;
@@ -23,9 +24,7 @@ RocmDevice::RocmDevice(const DeviceInitParams& params) : DeviceBase(params){
     // no  hipblasLT
     checkHipErrors(cublasSetStream(hipblas_handle_, stream_));
     checkHipErrors(hipGetDeviceProperties(&device_prop_, device_id_));
-
     // no gemm config 
-
     // TODO: nncl config
 } 
 
@@ -80,6 +79,6 @@ DeviceStatus RocmDevice::getDeviceStatus(){
     return status; 
 }
 
-RTP_LLM_REGISTER_DECIE(Rocm);
+RTP_LLM_REGISTER_DEVICE(Rocm);
 
 
