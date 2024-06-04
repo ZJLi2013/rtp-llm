@@ -42,7 +42,7 @@ inline void __checkHipErrors(hipError_t err, const char *file, const int line) {
 }
 #endif
 
-hipError_t getSetDeviceRocm(int i_device, int* o_device){
+hipError_t getSetDeviceRocm(int i_device, int* o_device=nullptr){
     int         current_dev_id = 0;
     hipError_t err = hipErrorTbd ; 
     if (o_device != nullptr){

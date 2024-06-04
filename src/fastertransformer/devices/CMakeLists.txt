@@ -1,20 +1,26 @@
 
 
+# TODO: 
+set(PROJECT_DIR /workspace/)
+# Define global include path 
+include_directories(${PROJECT_DIR})
+
 # Specify source files for devices_module 
-file(DEVICE_SOURCES  *.cc)
+file(GLOB SOURCES *.cc)
 
 # Specify header files for devices_module 
-file(DEVICES_HEADERS *.h)
+file(GLOB HEADERS *.h)
+message({HEADERS})
 
 # Add amd_impl subdirectories  
 # add_subdirectory(amd_impl)
 
 # Create a library for devices_module 
-add_library(devices_module ${DEVICE_SOURCES})
+add_library(devices_module ${SOURCES})
 
 # Include headers 
-target_include_directories(devices_module PUBLIC ${DEVICES_HEADERS})
+target_include_directories(devices_module PUBLIC ${HEADERS})
 
 # specify dependencies
-target_link_libraries(devices_module PUBLIC core_module rocm_module utils_module)
+target_link_libraries(devices_module PUBLIC core_module util_module)
 
