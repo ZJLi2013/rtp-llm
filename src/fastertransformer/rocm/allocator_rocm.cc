@@ -1,5 +1,4 @@
 #include "src/fastertransformer/rocm/allocator_rocm.h"
-#include "src/fastertransformer/rocm/hip_helper.h"
 #include <mutex>
 
 namespace fastertransformer { 
@@ -81,12 +80,12 @@ Allocator<AllocatorType::ROCM>::malloc(size_t size, const bool is_set_zero){
     void* ptr      = nullptr;
     int   o_device = 0;
 
-    checkHipErrors(getSetDevice(device_id_, &o_device)); 
+    checkHipErrors(getSetDeviceRocm(device_id_, &o_device)); 
     checkHipErrors(hipMallocAsync(&ptr, (size_t)(ceil(size / 32.)) * 32, stream_));
     if (is_set_zero){
         checkHipErrors(hipMemsetAsync(ptr, 0,  (size_t)(ceil(size / 32.)) * 32, stream_));
     }
-    checkHipErrors(getSetDevice(o_device));
+    checkHipErrors(getSetDeviceRocm(o_device));
     std:lock_guard<std::mutex> lock(lock_);
     // following insert() only func once a thread
     pointer_mapping_->insert(ptr, size); 
@@ -100,10 +99,10 @@ Allocator<AllocatorType::ROCM>::free(void** ptr){
         int o_device = 0 ;
         std::lock_guard<std::mutex> lock(lock_);
         if(pointer_mapping_->count(address)){
-            checkHipErrors(getSetDevice(device_id, &o_device));
+            checkHipErrors(getSetDeviceRocm(device_id, &o_device));
             checkHipErrors(hipFreeAsync(*ptr, stream_));
             // hipStreamSynchronize(stream_);
-            checkHipErrors(getSetDevice(o_device))；
+            checkHipErrors(getSetDeviceRocm(o_device));
             pointer_mapping_->release(address); 
         }else {
             FT_LOG_WARNING("pointer_mapping_ does not have information of ptr at %p.", address);

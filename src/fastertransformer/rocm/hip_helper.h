@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
+#pragma once 
 #include "hip/hip_runtime.h"
 #include "hip/hip_runtime_api.h"
 #include "rocm_smi/rocm_smi.h"
@@ -41,9 +42,10 @@ inline void __checkHipErrors(hipError_t err, const char *file, const int line) {
 }
 #endif
 
-hipError_t getSetDevice(int i_device, int* o_device){
+hipError_t getSetDeviceRocm(int i_device, int* o_device){
     int         current_dev_id = 0;
-    if (o_device != null){
+    hipError_t err = hipErrorTbd ; 
+    if (o_device != nullptr){
       err = hipGetDevice(&current_dev_id);
       if(err != hipSuccess){
         return err ;
@@ -80,9 +82,9 @@ inline void __checkRsmiErrors(rsmi_status_t status){
 }
 #endif 
 
-#define sync_check_rocm_error() syncAndCheck(__FILE__, __LINE__)
+#define sync_check_rocm_error() syncAndCheckRocm(__FILE__, __LINE__)
 
-inline void syncAndCheck(const char* const file, int const line){
+inline void syncAndCheckRocm(const char* const file, int const line){
   hipDeviceSynchronize();
   hipError_t result = hipGetLastError();
   if (result){

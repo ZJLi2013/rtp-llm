@@ -12,6 +12,8 @@ enum class AllocatorType {
     CUDA,
     CUDA_HOST,
     TH,
+    ROCM ,
+    ROCM_HOST ,
 };
 
 enum class ReallocType {
