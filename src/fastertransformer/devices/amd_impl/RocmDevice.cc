@@ -22,7 +22,7 @@ RocmDevice::RocmDevice(const DeviceInitParams& params) : DeviceBase(params){
 
     checkHipErrors(hipblasCreate(&hipblas_handle_));
     // no  hipblasLT
-    checkHipErrors(cublasSetStream(hipblas_handle_, stream_));
+    checkHipErrors(hipblasSetStream(hipblas_handle_, stream_));
     checkHipErrors(hipGetDeviceProperties(&device_prop_, device_id_));
     // no gemm config 
     // TODO: nncl config
@@ -38,7 +38,7 @@ RocmDevice::~RocmDevice(){
 void RocmDevice::init(){
     DeviceBase::init();
     printf("max batch size: %d\n", init_params_.max_batch_size);
-    rocrandstate_buf_ = allocateBuffer({init_params_.max_batch_size * sizeof(curandState_t)});
+    rocrandstate_buf_ = allocateBuffer({init_params_.max_batch_size * sizeof(hiprandStateXORWOW_t)});
 }
 
 void RocmDevice::syncAndCheck(){
@@ -72,9 +72,9 @@ DeviceStatus RocmDevice::getDeviceStatus(){
     status.host_memory_status.allocated_bytes = buffer_status.host_allocated_bytes;
 
     rocmUtilization_t utilization ; 
-    auto ret = rocmDeviceGetUtilizationRates(device_id_, &utilization);
+    auto ret = rocmDeviceGetUtilizationRates(device_id_, utilization);
     assert(ret==RSMI_STATUS_SUCCESS);
-    status.device_utlization = (float)utilization.gpu; 
+    status.device_utilization = (float)utilization.gpu; 
 
     return status; 
 }

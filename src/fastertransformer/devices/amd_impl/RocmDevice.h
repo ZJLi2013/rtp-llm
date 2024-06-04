@@ -3,6 +3,8 @@
 #include "src/fastertransformer/rocm/hip_helper.h"
 // #include "src/fastertransformer/core/Buffer.h"
 #include <hip/hip_runtime.h>
+#include <hiprand/hiprand_kernel.h> 
+#include <hipblas/hipblas.h>
 #include <unistd.h>
 
 namespace fastertransformer {
@@ -13,7 +15,7 @@ class RocmDevice : public DeviceBase {
         ~RocmDevice(); 
 
     public:
-        void init() override ; 
+        void init() override ;
         DeviceProperties getDeviceProperties() override ; 
         DeviceStatus getDeviceStatus() override ;
         // allocator api
