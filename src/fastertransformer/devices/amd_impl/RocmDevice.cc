@@ -20,9 +20,9 @@ RocmDevice::RocmDevice(const DeviceInitParams& params) : DeviceBase(params){
     host_allocator_ptr->setStream(stream_);
     host_allocator_.reset(host_allocator_ptr);
 
-    checkHipErrors(hipblasCreate(&hipblas_handle_));
+    checkHipBlasErrors(hipblasCreate(&hipblas_handle_));
     // no  hipblasLT
-    checkHipErrors(hipblasSetStream(hipblas_handle_, stream_));
+    checkHipBlasErrors(hipblasSetStream(hipblas_handle_, stream_));
     checkHipErrors(hipGetDeviceProperties(&device_prop_, device_id_));
     // no gemm config 
     // TODO: nncl config
@@ -31,7 +31,7 @@ RocmDevice::RocmDevice(const DeviceInitParams& params) : DeviceBase(params){
 RocmDevice::~RocmDevice(){
     rocrandstate_buf_.reset(); 
     checkHipErrors(hipStreamDestroy(stream_));
-    checkHipErrors(hipblasDestroy(hipblas_handle_));
+    checkHipBlasErrors(hipblasDestroy(hipblas_handle_));
     //TODO: nncl destroy
 }
 

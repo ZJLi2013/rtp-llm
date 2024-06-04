@@ -42,6 +42,20 @@ inline void __checkHipErrors(hipError_t err, const char *file, const int line) {
 }
 #endif
 
+// TODO
+#ifndef checkHipBlasErrors
+#define checkHipBlasErrors(err) __checkHipBlasErrors(err, __FILE__, __LINE__)
+
+inline void __checkHipBlasErrors(hipblasStatus_t err, const char* file, const int line){
+  if(HIPBLAS_STATUS_SUCCESS != err){
+    fprintf(stderr, "checkHipBlasErrors() HIPBlas API error = %04d from file <%s>,"
+             "line %i. \n",
+              err, file, line);
+    exit(EXIT_FAILURE); 
+  }
+}
+#endif 
+
 hipError_t getSetDeviceRocm(int i_device, int* o_device=nullptr){
     int         current_dev_id = 0;
     hipError_t err = hipErrorTbd ; 
