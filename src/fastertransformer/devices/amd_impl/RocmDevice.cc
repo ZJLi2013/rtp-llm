@@ -5,7 +5,7 @@
 #include "src/fastertransformer/utils/logger.h"
 
 namespace fastertransformer {
-    
+
 static const size_t DEFAULT_MAX_BATCH_SIZE = 256;
 
 RocmDevice::RocmDevice(const DeviceInitParams& params) : DeviceBase(params){
@@ -13,7 +13,7 @@ RocmDevice::RocmDevice(const DeviceInitParams& params) : DeviceBase(params){
     checkHipErrors(hipSetDevice(device_id_)); 
     checkHipErrors(hipStreamCreate(&stream_)); 
 
-    auto allocator_ptr = new Allocator<AllocatorType::ROCM>(decie_id_);
+    auto allocator_ptr = new Allocator<AllocatorType::ROCM>(device_id_);
     allocator_ptr->setStream(stream_);
     allocator_.reset(allocator_ptr);
     auto host_allocator_ptr = new Allocator<AllocatorType::ROCM_HOST>(device_id_);
@@ -29,7 +29,7 @@ RocmDevice::RocmDevice(const DeviceInitParams& params) : DeviceBase(params){
 } 
 
 RocmDevice::~RocmDevice(){
-    curandstate_buf_.reset(); 
+    rocrandstate_buf_.reset(); 
     checkHipErrors(hipStreamDestroy(stream_));
     checkHipErrors(hipblasDestroy(hipblas_handle_));
     //TODO: nncl destroy
@@ -38,7 +38,7 @@ RocmDevice::~RocmDevice(){
 void RocmDevice::init(){
     DeviceBase::init();
     printf("max batch size: %d\n", init_params_.max_batch_size);
-    curandstate_buf_ = allocateBuffer({init_params_.max_batch_size * sizeof(curandState_t)});
+    rocrandstate_buf_ = allocateBuffer({init_params_.max_batch_size * sizeof(curandState_t)});
 }
 
 void RocmDevice::syncAndCheck(){
@@ -72,9 +72,9 @@ DeviceStatus RocmDevice::getDeviceStatus(){
     status.host_memory_status.allocated_bytes = buffer_status.host_allocated_bytes;
 
     rocmUtilization_t utilization ; 
-    auto ret = rocmDeviceGetUtilizationRates(device_id_, &utlization);
+    auto ret = rocmDeviceGetUtilizationRates(device_id_, &utilization);
     assert(ret==RSMI_STATUS_SUCCESS);
-    status.device_utlization = (float)utlization.gpu; 
+    status.device_utlization = (float)utilization.gpu; 
 
     return status; 
 }

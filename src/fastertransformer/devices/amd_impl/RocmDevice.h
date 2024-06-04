@@ -1,6 +1,7 @@
 #pragma once 
 #include "src/fastertransformer/devices/DeviceBase.h"
 #include "src/fastertransformer/rocm/hip_helper.h"
+// #include "src/fastertransformer/core/Buffer.h"
 #include <hip/hip_runtime.h>
 #include <unistd.h>
 
@@ -27,7 +28,7 @@ class RocmDevice : public DeviceBase {
         hipblasHandle_t hipblas_handle_ ; 
         hipDeviceProp_t device_prop_ ;
 
-        // BufferPtr rocrandstate_buf_; // for sampler use.
+        BufferPtr rocrandstate_buf_; // for sampler use.
 } ;
 
 } // namespace fastertransformer
