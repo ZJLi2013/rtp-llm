@@ -18,7 +18,8 @@ class RocmDevice : public DeviceBase {
         void init() override ;
         DeviceProperties getDeviceProperties() override ; 
         DeviceStatus getDeviceStatus() override ;
-        // allocator api
+        IAllocator* getAllocator() override { return allocator_.get(); }
+        IAllocator* getHostAllocator() override { return host_allocator_.get(); }
         // TODO:
         void syncAndCheck() override ; 
     
