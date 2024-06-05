@@ -38,5 +38,5 @@ add_library(amd_impl_module ${SOURCES})
 target_include_directories(amd_impl_module PUBLIC ${HEADERS} ${ROCM_PATH}/include)
 
 # specify dependencies 
-target_link_libraries(amd_impl_module PUBLIC devices_module rocm_module util_module hip::host)
+target_link_libraries(amd_impl_module PUBLIC devices_module rocm_module utils_module hip::host)
 

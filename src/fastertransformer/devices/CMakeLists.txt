@@ -23,5 +23,5 @@ add_library(devices_module SHARED ${SOURCES})
 target_include_directories(devices_module PUBLIC ${HEADERS})
 
 # specify dependencies
-target_link_libraries(devices_module PUBLIC core_module util_module)
+target_link_libraries(devices_module PUBLIC core_module utils_module)
 

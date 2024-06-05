@@ -43,4 +43,4 @@ target_include_directories(rocm_module PUBLIC
                             ${ROCM_PATH}/include )
 
 # specify dependencies : link against core_module 
-target_link_libraries(rocm_module PUBLIC core_module util_module hip::host )
+target_link_libraries(rocm_module PUBLIC core_module utils_module hip::host )

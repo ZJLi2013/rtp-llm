@@ -25,8 +25,8 @@ set(SOURCES
     )
 
 # Create a lib for util module 
-add_library(util_module ${SOURCES})
+add_library(utils_module ${SOURCES})
 
 # Include the directory for core module 
-target_include_directories(util_module PUBLIC ${HEADERS})
+target_include_directories(utils_module PUBLIC ${HEADERS})
 
