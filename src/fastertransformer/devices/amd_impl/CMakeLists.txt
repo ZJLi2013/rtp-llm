@@ -30,6 +30,11 @@ endif()
 # Find hip
 find_package(hip REQUIRED)
 
+# Find hipblas rocm_smi libraries 
+find_library(HIPBLAS hipblas HINTS /opt/rocm/lib)
+find_library(HIPBLASLT hipblaslt HINTS /opt/rocm/lib)
+find_library(RMSI rocm_smi64 HINTS /opt/rocm/lib)
+
 # Set HIPCC compiler and linker
 set(CMAKE_CXX_COMPILER ${HIP_HIPCC_EXECUTABLE})
 set(CMAKE_CXX_LINKER   ${HIP_HIPCC_EXECUTABLE})
@@ -41,5 +46,5 @@ add_library(amd_impl_module ${SOURCES})
 target_include_directories(amd_impl_module PUBLIC ${HEADERS} ${ROCM_PATH}/include)
 
 # specify dependencies 
-target_link_libraries(amd_impl_module PUBLIC devices_module rocm_module utils_module hip::host)
+target_link_libraries(amd_impl_module PUBLIC devices_module rocm_module utils_module hip::host ${HIPBLAS} ${HIPBLASLT} ${RMSI})
 

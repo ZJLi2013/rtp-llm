@@ -20,7 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
-#pragma once 
+#ifndef SRC_FASTERTRANSFORMER_ROCM_HIP_HELPER_H_
+#define SRC_FASTERTRANSFORMER_ROCM_HIP_HELPER_H_
+
 #include "hip/hip_runtime.h"
 #include "hip/hip_runtime_api.h"
 #include "rocm_smi/rocm_smi.h"
@@ -58,7 +60,7 @@ inline void __checkHipBlasErrors(hipblasStatus_t err, const char* file, const in
 }
 #endif 
 
-hipError_t getSetDeviceRocm(int i_device, int* o_device=nullptr){
+inline hipError_t getSetDeviceRocm(int i_device, int* o_device=nullptr){
     int         current_dev_id = 0;
     hipError_t err = hipErrorTbd ; 
     if (o_device != nullptr){
@@ -126,3 +128,5 @@ inline rsmi_status_t  rocmDeviceGetUtilizationRates(uint32_t device_id, rocmUtil
 }
 
 }  // namespace fastertransformer
+
+#endif 

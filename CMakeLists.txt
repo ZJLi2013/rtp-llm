@@ -32,7 +32,7 @@ set(SOURCES
     )
   
 set(HEADERS
-  ${CMAKE_CURRENT_SOURCE_DIR}//src/fastertransformer/devices/amd_impl/RocmDevice.h
+#  ${CMAKE_CURRENT_SOURCE_DIR}//src/fastertransformer/devices/amd_impl/RocmDevice.h
 )
 
 if(${__HIP_ENABLE_PCH})
@@ -68,4 +68,4 @@ add_executable(rocm_test ${SOURCES})
 target_include_directories(rocm_test PUBLIC ${HEADERS})
 
 # specify dependencies 
-target_link_libraries(rocm_test PUBLIC devices_module)
+target_link_libraries(rocm_test PUBLIC devices_module amd_impl_module)

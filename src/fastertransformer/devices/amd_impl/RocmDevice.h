@@ -1,7 +1,6 @@
 #pragma once 
 #include "src/fastertransformer/devices/DeviceBase.h"
 #include "src/fastertransformer/rocm/hip_helper.h"
-// #include "src/fastertransformer/core/Buffer.h"
 #include <hip/hip_runtime.h>
 #include <hiprand/hiprand_kernel.h> 
 #include <hipblas/hipblas.h>
