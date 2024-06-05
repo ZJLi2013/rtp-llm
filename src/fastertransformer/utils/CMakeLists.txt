@@ -24,6 +24,9 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/exception.cc  
     )
 
+# Configure 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE BOOL "Build position-independent code (PIC)")
+
 # Create a lib for util module 
 add_library(utils_module ${SOURCES})
 

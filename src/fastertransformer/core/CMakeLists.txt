@@ -21,6 +21,9 @@ set(HEADERS
      ${CMAKE_CURRENT_SOURCE_DIR}/allocator.h 
     )
 
+# Configure 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE BOOL "Build position-independent code (PIC)")
+
 # Create a lib for core module 
 add_library(core_module ${SOURCES})
 

@@ -12,6 +12,9 @@ set(HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/RocmDevice.h 
     )
 
+# Configure 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE BOOL "Build position-independent code (PIC)")
+
 if(${__HIP_ENABLE_PCH})
   add_definitions(-D__HIP_ENABLE_PCH)
 endif()

@@ -13,6 +13,9 @@ message({SOURCES})
 file(GLOB HEADERS *.h)
 message({HEADERS})
 
+# Configure 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE BOOL "Build position-independent code (PIC)")
+
 # Add amd_impl subdirectories  
 add_subdirectory(amd_impl)
 
