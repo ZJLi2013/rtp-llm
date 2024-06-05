@@ -17,7 +17,7 @@ message({HEADERS})
 add_subdirectory(amd_impl)
 
 # Create a library for devices_module 
-add_library(devices_module ${SOURCES})
+add_library(devices_module SHARED ${SOURCES})
 
 # Include headers 
 target_include_directories(devices_module PUBLIC ${HEADERS})

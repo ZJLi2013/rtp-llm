@@ -1,9 +1,12 @@
-#include "src/fastertransformer/device/amd_impl/RocmDevice.h"
+#include "src/fastertransformer/devices/amd_impl/RocmDevice.h"
+
+namespace fastertransformer { 
 
 int main()
 {
-    DeviceInitParams rocm_params;
-    rocm_device = RocmDevice(rocm_params) ;
+    fastertransformer::DeviceInitParams rocm_params;
+
+    fastertransformer::RocmDevice rocm_device = fastertransformer::RocmDevice(rocm_params) ;
     rocm_device.init() ;
     rocm_device.getDeviceProperties();
     rocm_device.getDeviceStatus();
@@ -11,3 +14,5 @@ int main()
 
     return 0 ;
 }
+
+} 

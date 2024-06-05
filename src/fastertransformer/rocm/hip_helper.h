@@ -24,6 +24,8 @@ THE SOFTWARE.
 #include "hip/hip_runtime.h"
 #include "hip/hip_runtime_api.h"
 #include "rocm_smi/rocm_smi.h"
+#include <hipblas/hipblas.h>
+
 
 namespace fastertransformer {
 

@@ -20,7 +20,20 @@
 
 project(rtpRocm)
 
-cmake_minimum_required(VERSION 3.10)
+# TODO: 
+set(PROJECT_DIR /workspace/)
+# Define global include path 
+include_directories(${PROJECT_DIR})
+
+message(${CMAKE_CURRENT_SOURCE_DIR})
+
+set(SOURCES 
+    ${CMAKE_CURRENT_SOURCE_DIR}//src/fastertransformer/devices/amd_impl/test/test.cc
+    )
+  
+set(HEADERS
+  ${CMAKE_CURRENT_SOURCE_DIR}//src/fastertransformer/devices/amd_impl/RocmDevice.h
+)
 
 if(${__HIP_ENABLE_PCH})
   add_definitions(-D__HIP_ENABLE_PCH)
@@ -35,23 +48,24 @@ if(UNIX)
 endif()
 
 # Find hip
-find_package(hip)
+find_package(hip REQUIRED)
 
-# add FasterTransformer subdirectories  
-set(FT_DIR ${PROJECT_SOURCE_DIR}/src/fastertransformer/)
-add_subdirectory(${FT_DIR}/core)
-add_subdirectory(${FT_DIR}/devices)
-add_subdirectory(${FT_DIR}/rocm)
-add_subdirectory(${FT_DIR}/utils)
+# Add subdirectories
+add_subdirectory(src/fastertransformer/devices)
+add_subdirectory(src/fastertransformer/core)
+add_subdirectory(src/fastertransformer/rocm)
+add_subdirectory(src/fastertransformer/utils)
+
 
 # Set compiler and linker
 set(CMAKE_CXX_COMPILER ${HIP_HIPCC_EXECUTABLE})
 set(CMAKE_CXX_LINKER   ${HIP_HIPCC_EXECUTABLE})
 
 # Create the excutable
-add_executable(rocm_test ${FT_DIR}/devices/amd_impl/test/test.cc)
+add_executable(rocm_test ${SOURCES})
 
-# Link with HIP
-target_link_libraries(rocm_test core_module devices_module rocm_module utils_module hip::host)
+# Include headers 
+target_include_directories(rocm_test PUBLIC ${HEADERS})
 
-
+# specify dependencies 
+target_link_libraries(rocm_test PUBLIC devices_module)

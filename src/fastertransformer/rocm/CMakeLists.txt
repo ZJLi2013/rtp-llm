@@ -35,12 +35,12 @@ set(CMAKE_CXX_COMPILER ${HIP_HIPCC_EXECUTABLE})
 set(CMAKE_CXX_LINKER   ${HIP_HIPCC_EXECUTABLE})
 
 # Create a lib for core module 
-add_library(rocm_device_module ${SOURCES})
+add_library(rocm_module ${SOURCES})
 
 # Include the directory for core module 
-target_include_directories(rocm_device_module PUBLIC 
+target_include_directories(rocm_module PUBLIC 
                             ${HEADERS}
                             ${ROCM_PATH}/include )
 
 # specify dependencies : link against core_module 
-target_link_libraries(rocm_device_module PUBLIC core_module util_module hip::host )
+target_link_libraries(rocm_module PUBLIC core_module util_module hip::host )
