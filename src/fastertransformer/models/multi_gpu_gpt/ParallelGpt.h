@@ -57,9 +57,9 @@ private:
     T*      decoder_layer_output_    = nullptr;
     T*      partial_moe_output_      = nullptr;
     T*      ffn_output_              = nullptr;
-    size_t* h_pinned_token_num_ptr_  = nullptr;
     int*    padding_offset_          = nullptr;
     int*    cu_seqlens_              = nullptr;
+    int*    cu_kv_seqlens_           = nullptr;
     int*    context_lengths_         = nullptr;
     int*    sequence_lengths_        = nullptr;
     int*    prefix_lengths_          = nullptr;

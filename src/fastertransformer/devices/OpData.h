@@ -70,18 +70,21 @@ using OptionalBufferRef         = std::optional<std::reference_wrapper<Buffer>>;
 using OptionalConstLoraMapRef    = std::optional<std::reference_wrapper<const LoraWeightsMap>>;
 
 template <typename T>
-inline std::optional<std::reference_wrapper<T>> mayGetRef(const std::unique_ptr<T>& ptr) {
+inline std::optional<std::reference_wrapper<T>> mayGetRef(const std::shared_ptr<T>& ptr) {
     return ptr ? std::optional<std::reference_wrapper<T>>(*ptr) : std::nullopt;
 }
 
 using CloneOutput = BufferPtr;
 
 struct CloneParams {
-    CloneParams(const Buffer& input, const AllocationType alloc_type = AllocationType::DEVICE)
-    : input(input), alloc_type(alloc_type) {}
+    CloneParams(const Buffer& input,
+                const AllocationType alloc_type = AllocationType::DEVICE,
+                const BufferHints& hints = BufferHints())
+    : input(input), alloc_type(alloc_type), hints(hints) {}
 
     const Buffer& input;
     const AllocationType alloc_type;
+    const BufferHints& hints;
 };
 
 struct CopyParams {
@@ -103,6 +106,14 @@ struct CopyParams {
     size_t dst_offset = 0;
     size_t src_offset = 0;
     size_t copy_length = 0;
+};
+
+using SelectOutput = BufferPtr;
+
+struct SelectParams {
+    const Buffer& input;
+    size_t dim = 0;
+    const Buffer& index;
 };
 
 using TransposeOutput = BufferPtr;
@@ -162,19 +173,19 @@ struct LayernormParams {
 // D = alpha * op(A) * op(B) + beta * C
 // shapes of A, B, C, D have two options: [m, k], [k, n], [m, n], [m, n]
 // or [bs, m, k], [bs, k, n], [bs, m, n], [bs, m, n] where bs is batch_size
-// NOTE: caller needs to preallocate C
-// TODO(dongjin): Make C a BufferPtr so that it can achieve in-place update
+// D is optional, if not passed, it will be allocated by the op
 struct GemmParams {
-
     GemmParams(const Buffer& A,
                const Buffer& B,
                OptionalBufferRef C = std::nullopt,
+               BufferPtr D = nullptr,
                const DataType compute_type = DataType::TYPE_INVALID,
                TransposeOperation transA = TransposeOperation::NONE,
                TransposeOperation transB = TransposeOperation::NONE):
                A(A),
                B(B),
                C(C),
+               D(D),
                compute_type(compute_type),
                transA(transA),
                transB(transB) {}
@@ -183,6 +194,7 @@ struct GemmParams {
     const Buffer& A;
     const Buffer& B;
     OptionalBufferRef C;
+    BufferPtr D;
     const DataType compute_type = DataType::TYPE_INVALID; // If passed invalid type, op should infer type
 
     const TransposeOperation transA = TransposeOperation::NONE;
@@ -227,6 +239,9 @@ struct EmbeddingLookupParams {
 
     OptionalConstBufferRef position_ids;
     OptionalConstBufferRef position_table;
+
+    OptionalConstBufferRef token_types;
+    OptionalConstBufferRef token_type_table;
 };
 
 struct AttentionCommonInputs {
@@ -262,6 +277,12 @@ struct AttentionCommonInputs {
                           sequence_lengths(sequence_lengths) {}
 };
 
+enum AttentionMaskType {
+    noMask,
+    causalMask,
+    promptMask,
+};
+
 struct AttentionConfigs {
     size_t      head_num;
     size_t      kv_head_num;
@@ -274,6 +295,8 @@ struct AttentionConfigs {
     size_t tokens_per_block;
 
     size_t hidden_size;
+    AttentionMaskType mask_type = noMask;
+    float q_scaling = 1.0f;
 };
 
 using AttentionModuleOutput = void;
@@ -294,6 +317,7 @@ struct AttentionLayerOutput {
 
 struct AttentionLayerParams {
     const Buffer&                   input;
+    BufferPtr                       output;
     const AttentionConfigs&         configs;
     const AttentionLayerWeights&    weights;
     AttentionCommonInputs&          common;

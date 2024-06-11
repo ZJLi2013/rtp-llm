@@ -18,12 +18,11 @@ from maga_transformer.async_decoder_engine.normal_model_executor import NormalMo
 from maga_transformer.async_decoder_engine.speculative.sp_model_executor import SpModelExecutor
 from maga_transformer.async_decoder_engine.medusa.medusa_model_executor import MedusaModelExecutor
 from maga_transformer.async_decoder_engine.medusa.utils import generate_medusa_buffers
+from maga_transformer.async_decoder_engine.embedding.embedding_engine import EmbeddingCppEngine
 from maga_transformer.async_decoder_engine.decoder_engine import DecoderEngine
 from maga_transformer.async_decoder_engine.batch_query import BatchQuery
 from maga_transformer.async_decoder_engine.schedule_strategy import create_schedule_strategy
 from maga_transformer.async_decoder_engine.ptuning.ptuning_utils import PtuningConstructor
-
-from maga_transformer.async_decoder_engine.embedding.embedding_decoder_engine import EmbeddingDecoderEngine
 
 class ExecutorType(Enum):
     Normal = "normal"
@@ -51,11 +50,7 @@ def create_engine(model: BaseModel, config: GptInitModelParameters, speculative_
     elif executor_type == ExecutorType.Medusa:
         return _create_medusa_engine(model, config)
     elif executor_type == ExecutorType.Embedding:
-        if os.environ.get('USE_CPP_EMEBDDING_ENGINE', None) == '1':
-            from maga_transformer.async_decoder_engine.embedding.cpp_embedding_engine import EmbeddingCppEngine
             return EmbeddingCppEngine(model)
-        else:
-            return EmbeddingDecoderEngine(config, model)
     else:
         raise Exception(f"unsupported executor type: {executor_type}")
 

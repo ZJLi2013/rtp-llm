@@ -19,7 +19,8 @@ public:
     int64_t total_latency_us       = 0;
     int64_t first_token_latency_us = 0;
     int64_t wait_latency_us        = 0;
-    int64_t iterate_cout           = 0;
+    int64_t pause_latency_us       = 0;
+    int64_t iterate_count          = 0;
     int64_t reuse_length           = 0;
     int64_t input_token_length     = 0;
     int64_t output_token_length    = 0;
@@ -38,7 +39,8 @@ public:
     kmonitor::MutableMetric* total_latency_us_metric       = nullptr;
     kmonitor::MutableMetric* first_token_latency_us_metric = nullptr;
     kmonitor::MutableMetric* wait_latency_us_metric        = nullptr;
-    kmonitor::MutableMetric* iterate_cout_metric           = nullptr;
+    kmonitor::MutableMetric* pause_latency_us_metric       = nullptr;
+    kmonitor::MutableMetric* iterate_count_metric          = nullptr;
     kmonitor::MutableMetric* reuse_length_metric           = nullptr;
     kmonitor::MutableMetric* input_token_length_metric     = nullptr;
     kmonitor::MutableMetric* output_token_length_metric    = nullptr;
@@ -149,6 +151,23 @@ public:
 public:
     kmonitor::MutableMetric* kv_cache_item_num_metric = nullptr;
     kmonitor::MutableMetric* kv_cache_left_seq_metric = nullptr;
+
+private:
+    AUTIL_LOG_DECLARE();
+};
+
+class RtpLLMCacheReuseMetricsCollector final {
+public:
+    int64_t kv_cache_reuse_length = 0;
+};
+
+class RtpLLMCacheReuseMetrics: public kmonitor::MetricsGroup {
+public:
+    bool init(kmonitor::MetricsGroupManager* manager) override;
+    void report(const kmonitor::MetricsTags* tags, RtpLLMCacheReuseMetricsCollector* collector);
+
+public:
+    kmonitor::MutableMetric* kv_cache_reuse_length = nullptr;
 
 private:
     AUTIL_LOG_DECLARE();

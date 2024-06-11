@@ -12,7 +12,7 @@ void ParallelGpt<T>::initialize()
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     // 默认stdout输出到文件的逻辑是全缓冲，导致ft_log和autil_log日志刷不出来，手动设置为行缓冲
     setlinebuf(stdout);
-    quant_algo_                 = params_.quant_algo_->toQuantAlgo();
+    quant_algo_                 = params_.quant_algo_.toQuantAlgo();
     parallel_attention_wrapper_ = new ParallelAttentionWrapper<T>(params_,
                                                                   tensor_para_,
                                                                   stream_,
@@ -76,60 +76,61 @@ void ParallelGpt<T>::allocateBuffer(size_t total_batch_size, size_t h_token_num,
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     size_t hidden_units   = params_.hidden_size_;
     decoder_normed_input_ = reinterpret_cast<T*>(
-        allocator_->reMalloc(decoder_normed_input_, sizeof(T) * h_token_num * hidden_units, false));
+        allocator_->reMalloc(decoder_normed_input_, sizeof(T) * h_token_num * hidden_units));
     self_attn_output_ =
-        reinterpret_cast<T*>(allocator_->reMalloc(self_attn_output_, sizeof(T) * h_token_num * hidden_units, false));
+        reinterpret_cast<T*>(allocator_->reMalloc(self_attn_output_, sizeof(T) * h_token_num * hidden_units));
     if (!reuse_buf) {
         normed_self_attn_output_ = reinterpret_cast<T*>(
-            allocator_->reMalloc(normed_self_attn_output_, sizeof(T) * h_token_num * hidden_units, false));
+            allocator_->reMalloc(normed_self_attn_output_, sizeof(T) * h_token_num * hidden_units));
     }
     else {
         normed_self_attn_output_ = decoder_normed_input_;
     }
     if (pre_attn_ln) {
         attn_normed_input_ = reinterpret_cast<T*>(
-            allocator_->reMalloc(attn_normed_input_, sizeof(T) * h_token_num * hidden_units, false));
+            allocator_->reMalloc(attn_normed_input_, sizeof(T) * h_token_num * hidden_units));
     }
     // only allocate additionl buffers when has adapters
     decoder_layer_output_ = reinterpret_cast<T*>(
-        allocator_->reMalloc(decoder_layer_output_, sizeof(T) * h_token_num * hidden_units, false));
+        allocator_->reMalloc(decoder_layer_output_, sizeof(T) * h_token_num * hidden_units));
     if (quant_algo_.smoothQuantInt8()) {
         attention_query_dynamic_scale_ = reinterpret_cast<float*>(
-            allocator_->reMalloc(attention_query_dynamic_scale_, sizeof(float) * h_token_num, false));
+            allocator_->reMalloc(attention_query_dynamic_scale_, sizeof(float) * h_token_num));
         ffn_intermediate_dynamic_scale_ = reinterpret_cast<float*>(
-            allocator_->reMalloc(ffn_intermediate_dynamic_scale_, sizeof(float) * h_token_num, false));
+            allocator_->reMalloc(ffn_intermediate_dynamic_scale_, sizeof(float) * h_token_num));
     }
-    h_pinned_token_num_ptr_ = (size_t*)allocator_->reMalloc(h_pinned_token_num_ptr_, sizeof(size_t), true);
-    padding_offset_ = reinterpret_cast<int*>(allocator_->reMalloc(padding_offset_, sizeof(int) * (h_token_num), false));
+    padding_offset_ = reinterpret_cast<int*>(allocator_->reMalloc(padding_offset_, sizeof(int) * (h_token_num)));
     cu_seqlens_ =
-        reinterpret_cast<int*>(allocator_->reMalloc(cu_seqlens_, sizeof(int) * (total_batch_size + 1), false));
+        reinterpret_cast<int*>(allocator_->reMalloc(cu_seqlens_, sizeof(int) * (total_batch_size + 1)));
+    cu_kv_seqlens_ =
+        reinterpret_cast<int*>(allocator_->reMalloc(cu_kv_seqlens_, sizeof(int) * (total_batch_size + 1)));
     context_lengths_ =
-        reinterpret_cast<int*>(allocator_->reMalloc(context_lengths_, sizeof(int) * (total_batch_size), false));
+        reinterpret_cast<int*>(allocator_->reMalloc(context_lengths_, sizeof(int) * (total_batch_size)));
     sequence_lengths_ =
-        reinterpret_cast<int*>(allocator_->reMalloc(sequence_lengths_, sizeof(int) * (total_batch_size), false));
+        reinterpret_cast<int*>(allocator_->reMalloc(sequence_lengths_, sizeof(int) * (total_batch_size)));
     prefix_lengths_ =
-        reinterpret_cast<int*>(allocator_->reMalloc(prefix_lengths_, sizeof(int) * (total_batch_size), false));
+        reinterpret_cast<int*>(allocator_->reMalloc(prefix_lengths_, sizeof(int) * (total_batch_size)));
     block_pointers_ =
-        reinterpret_cast<int64_t*>(allocator_->reMalloc(block_pointers_, sizeof(int64_t) * (2 * params_.num_layers_ * total_batch_size * params_.max_seq_len_ / params_.seq_size_per_block_ + 32), true));
+        reinterpret_cast<int64_t*>(allocator_->reMalloc(block_pointers_, sizeof(int64_t) * (2 * params_.num_layers_ * total_batch_size * params_.max_seq_len_ / params_.seq_size_per_block_ + 32)));
     if (params_.int8_kv_cache_) {
         block_scale_pointers_ =
-            reinterpret_cast<int64_t*>(allocator_->reMalloc(block_scale_pointers_, sizeof(int64_t) * (2 * params_.num_layers_ * total_batch_size * params_.max_seq_len_ / params_.seq_size_per_block_ + 32), true));
+            reinterpret_cast<int64_t*>(allocator_->reMalloc(block_scale_pointers_, sizeof(int64_t) * (2 * params_.num_layers_ * total_batch_size * params_.max_seq_len_ / params_.seq_size_per_block_ + 32)));
     }
 
     // for moe
     expert_scales_ = reinterpret_cast<float*>(
-        allocator_->reMalloc(expert_scales_, sizeof(float) * pad_to_multiple_of_16(params_.moe_k_ * h_token_num), false));
+        allocator_->reMalloc(expert_scales_, sizeof(float) * pad_to_multiple_of_16(params_.moe_k_ * h_token_num)));
     expanded_source_row_to_expanded_dest_row_ = reinterpret_cast<int*>(allocator_->reMalloc(
-        expanded_source_row_to_expanded_dest_row_, sizeof(int) * pad_to_multiple_of_16(params_.moe_k_ * h_token_num), false));
+        expanded_source_row_to_expanded_dest_row_, sizeof(int) * pad_to_multiple_of_16(params_.moe_k_ * h_token_num)));
     expert_for_source_row_                    = reinterpret_cast<int*>(
-        allocator_->reMalloc(expert_for_source_row_, sizeof(int) * pad_to_multiple_of_16(params_.moe_k_ * h_token_num), false));
+        allocator_->reMalloc(expert_for_source_row_, sizeof(int) * pad_to_multiple_of_16(params_.moe_k_ * h_token_num)));
     fc2_result_ = reinterpret_cast<T*>(
-        allocator_->malloc(sizeof(T) * pad_to_multiple_of_16(params_.moe_k_ * h_token_num * hidden_units), false));
+        allocator_->malloc(sizeof(T) * pad_to_multiple_of_16(params_.moe_k_ * h_token_num * hidden_units)));
     if (params_.moe_style_ == 2) {
         partial_moe_output_ = reinterpret_cast<T*>(
-            allocator_->reMalloc(partial_moe_output_, sizeof(T) * h_token_num * hidden_units, false));
+            allocator_->reMalloc(partial_moe_output_, sizeof(T) * h_token_num * hidden_units));
         ffn_output_ = reinterpret_cast<T*>(
-            allocator_->reMalloc(ffn_output_, sizeof(T) * h_token_num * hidden_units, false));
+            allocator_->reMalloc(ffn_output_, sizeof(T) * h_token_num * hidden_units));
     }
 
     is_allocate_buffer_ = true;
@@ -149,9 +150,9 @@ void ParallelGpt<T>::freeBuffer()
         allocator_->free((void**)(&decoder_normed_input_));
         allocator_->free((void**)(&self_attn_output_));
         allocator_->free((void**)(&decoder_layer_output_));
-        allocator_->free((void**)(&h_pinned_token_num_ptr_));
         allocator_->free((void**)(&padding_offset_));
         allocator_->free((void**)(&cu_seqlens_));
+        allocator_->free((void**)(&cu_kv_seqlens_));
         allocator_->free((void**)(&context_lengths_));
         allocator_->free((void**)(&sequence_lengths_));
         allocator_->free((void**)(&prefix_lengths_));
@@ -328,7 +329,7 @@ void ParallelGpt<T>::forward(TensorMap*                                         
 
 
     Tensor decoder_input_tensor = input_tensors->at("decoder_input");
-    T* decoder_output_ptr = output_tensors->at("decoder_output").getPtr<T>();    
+    T* decoder_output_ptr = output_tensors->at("decoder_output").getPtr<T>();
     size_t hidden_units         = params_.hidden_size_;
     FT_CHECK(decoder_input_tensor.shape()[1] == hidden_units);
     const size_t total_batch_size = input_tensors->at("input_lengths").shape()[0];
@@ -338,7 +339,6 @@ void ParallelGpt<T>::forward(TensorMap*                                         
     }
     const size_t   h_token_num = decoder_input_tensor.shape()[0];
     const DataType data_type   = getTensorType<T>();
-    const bool     use_kvcache = (output_tensors->isExist("key_cache") && output_tensors->isExist("value_cache")) || output_tensors->isExist("block_pointers");
 
     PUSH_RANGE(stream_, "buffer allocation");
     bool reuse_buf   = !params_.use_norm_input_residual_;
@@ -347,6 +347,7 @@ void ParallelGpt<T>::forward(TensorMap*                                         
     POP_RANGE;
 
     const size_t context_batch_size = total_batch_size - batch_size;
+
     int*         input_lengths      = input_tensors->getPtr<int>("input_lengths");
     cudaMemcpyAsync(context_lengths_, input_lengths, sizeof(int) * total_batch_size, cudaMemcpyHostToDevice, stream_);
     size_t max_input_length = 0;
@@ -366,15 +367,19 @@ void ParallelGpt<T>::forward(TensorMap*                                         
         step             = step + 1;
     }
 
+    int max_context_prefix_length = 0;
     if (input_tensors->isExist("d_prefix_prompt_lengths")) {
         int *d_prefix_prompt_lengths = input_tensors->getPtr<int>("d_prefix_prompt_lengths");
+        if (context_batch_size > 0) {
+            max_context_prefix_length = *std::max_element(d_prefix_prompt_lengths + batch_size, d_prefix_prompt_lengths + total_batch_size);
+        }
         cudaMemcpyAsync(prefix_lengths_, d_prefix_prompt_lengths, sizeof(int) * total_batch_size,
                         cudaMemcpyHostToDevice, stream_);
     }
 
     uint   max_blocks_per_batch = 0;
     size_t block_stride = 0;
-    if (use_kvcache) {
+    if (params_.use_kvcache_) {
         if (output_tensors->isExist("block_pointers")) {
             Tensor block_pointers = output_tensors->at("block_pointers");
             assert(block_pointers.shape()[0] == params_.num_layers_);
@@ -382,10 +387,20 @@ void ParallelGpt<T>::forward(TensorMap*                                         
             assert(block_pointers.shape()[2] == 2);
             max_blocks_per_batch = block_pointers.shape()[3];
             block_stride = total_batch_size * 2 * max_blocks_per_batch;
-            cudaMemcpyAsync(block_pointers_, block_pointers.data(), sizeof(int64_t) * params_.num_layers_ * total_batch_size * max_blocks_per_batch * 2, cudaMemcpyHostToDevice, stream_);
+            size_t data_nums = params_.num_layers_ * total_batch_size * max_blocks_per_batch * 2;
+            size_t data_size = sizeof(int64_t) * data_nums;
+            cudaMemcpyAsync(block_pointers_, block_pointers.data(), data_size, cudaMemcpyHostToDevice, stream_);
             block_pointers_vector_.clear();
-            block_pointers_vector_.resize(params_.num_layers_ * total_batch_size * max_blocks_per_batch * 2);
-            memcpy(block_pointers_vector_.data(), block_pointers.data(), sizeof(int64_t) * params_.num_layers_ * total_batch_size * max_blocks_per_batch * 2);
+            block_pointers_vector_.resize(data_nums);
+            memcpy(block_pointers_vector_.data(), block_pointers.data(), data_size);
+
+            if (params_.int8_kv_cache_) {
+                Tensor block_scale_pointers = output_tensors->at("block_scale_pointers");
+                cudaMemcpyAsync(block_scale_pointers_, block_scale_pointers.data(), data_size, cudaMemcpyHostToDevice, stream_);
+                block_scale_pointers_vector_.clear();
+                block_scale_pointers_vector_.resize(data_nums);
+                memcpy(block_scale_pointers_vector_.data(), block_scale_pointers.data(), data_size);
+            }
         } else {
             convert_to_block_pointers(output_tensors, input_tensors, total_batch_size);
             max_blocks_per_batch = (uint)(input_tensors->at("block_index_map").shape()[1]);
@@ -495,7 +510,6 @@ void ParallelGpt<T>::forward(TensorMap*                                         
 
         TensorMap attention_input_tensors{
             {"input_query", Tensor{MEMORY_GPU, activation_in_type, {h_token_num, hidden_units}, input_query}},
-            {"use_kvcache", Tensor{MEMORY_CPU, TYPE_BOOL, {(size_t)1}, &use_kvcache}},
             {"block_pointers",
              Tensor{MEMORY_GPU, TYPE_INT64, {total_batch_size, 1, 2, max_blocks_per_batch}, block_pointers_ + l * block_stride}},
             {"host_block_pointers", Tensor{MEMORY_CPU, TYPE_INT64, {total_batch_size, 1, 2, max_blocks_per_batch}, block_pointers_vector_.data() + l * block_stride}},
@@ -546,6 +560,9 @@ void ParallelGpt<T>::forward(TensorMap*                                         
             );
             attention_input_tensors.insert("d_prefix_prompt_lengths",
                                            Tensor{MEMORY_GPU, TYPE_INT32, {total_batch_size}, prefix_lengths_});
+            invokeGetCuSeqLens(cu_kv_seqlens_, context_lengths_ + batch_size, prefix_lengths_ + batch_size, context_batch_size, stream_);
+            attention_input_tensors.insert("max_context_prefix_length",  Tensor{MEMORY_CPU, TYPE_INT32, {1}, &max_context_prefix_length});
+            attention_input_tensors.insert("cu_kv_seqlens",  Tensor{MEMORY_GPU, TYPE_INT32, {context_batch_size}, cu_kv_seqlens_});
             attention_input_tensors.insert("count_prefix_length", input_tensors->at("count_prefix_length"));
         }
         TensorMap attention_output_tensors{
@@ -660,7 +677,7 @@ void ParallelGpt<T>::forward(TensorMap*                                         
                                       Tensor{MEMORY_GPU, TYPE_INT32, {h_token_num, moe_k}, expert_for_source_row_});
         }
 
-        ffn_layer_->forward(&ffn_output_tensors, 
+        ffn_layer_->forward(&ffn_output_tensors,
                             &ffn_input_tensors,
                             use_moe_instead_ffn
                                 ? &layer_weight->partial_moe_weights

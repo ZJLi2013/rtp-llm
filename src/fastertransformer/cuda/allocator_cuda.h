@@ -2,6 +2,7 @@
 #include "src/fastertransformer/core/allocator.h"
 #include "src/fastertransformer/cuda/cuda_utils.h"
 #include <mutex>
+#include <unordered_set>
 
 namespace fastertransformer{
 
@@ -23,9 +24,7 @@ public:
         return stream_;
     };
 
-    void* reMalloc(void* ptr, size_t size, const bool is_set_zero = false) override;
-
-    void memSet(void* ptr, const int val, const size_t size) const override;
+    void* reMalloc(void* ptr, size_t size) override;
 
 protected:
     virtual bool isExist(void* address) const = 0;
@@ -38,29 +37,22 @@ protected:
 
 class PurePointerCudaAllocator: public ICudaAllocator {
 public:
-    PurePointerCudaAllocator(int device_id)
-    : ICudaAllocator(device_id)
-    , pointer_mapping_(new std::unordered_map<void*, size_t>)
-    {}
-    ~PurePointerCudaAllocator() {}
+    PurePointerCudaAllocator(int device_id);
+    ~PurePointerCudaAllocator();
+
+public:
+    void* malloc(size_t size) override;
+    void free(void** ptr) override;
 
 protected:
-    virtual bool isExist(void* address) const {
-        return pointer_mapping_->count(address) > 0;
-    }
+    virtual bool isExist(void* address) const;
+    virtual ReallocType isReMalloc(void* address, size_t size) const;
 
-    virtual ReallocType isReMalloc(void* address, size_t size) const {
-        FT_CHECK(isExist(address));
-        if (pointer_mapping_->at(address) < size) {
-            return ReallocType::INCREASE;
-        } else if (pointer_mapping_->at(address) == size) {
-            return ReallocType::REUSE;
-        } else {
-            return ReallocType::DECREASE;
-        }
-    }
+    virtual void* doMalloc(size_t size) = 0;
+    virtual void doFree(void* ptr) = 0;
+    void destroy();
 
-protected:
+private:
     std::unique_ptr<std::unordered_map<void*, size_t>> pointer_mapping_;
     std::mutex lock_;
 };
@@ -71,8 +63,8 @@ public:
     Allocator(int device_id);
     ~Allocator();
 
-    void* malloc(size_t size, const bool is_set_zero = false) override;
-    void free(void** ptr) override;
+    void* doMalloc(size_t size) override;
+    void doFree(void* ptr) override;
 };
 
 template<>
@@ -85,8 +77,8 @@ public:
         return MEMORY_CPU_PINNED;
     }
 
-    void* malloc(size_t size, const bool is_set_zero = false) override;
-    void free(void** ptr) override;
+    void* doMalloc(size_t size) override;
+    void doFree(void* ptr) override;
 };
 
 

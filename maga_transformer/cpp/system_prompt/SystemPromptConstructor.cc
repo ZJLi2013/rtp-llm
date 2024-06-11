@@ -14,7 +14,7 @@
 #include "maga_transformer/cpp/system_prompt/SystemPrompt.h"
 #include "maga_transformer/cpp/system_prompt/SystemPromptConstructor.h"
 #include "src/fastertransformer/core/Buffer.h"
-#include "src/fastertransformer/devices/utils/BufferTorchUtils.h"
+#include "src/fastertransformer/core/torch_utils/BufferTorchUtils.h"
 
 namespace ft = fastertransformer;
 
@@ -22,7 +22,7 @@ namespace rtp_llm {
 
 std::unordered_map<int, SystemPromptParams> SystemPromptConstructor::construct(const ft::GptInitParameter& params, EngineBase* engine, CacheManager* cache_manager) {
     std::unordered_map<int, SystemPromptParams> multi_task_prompt_args;
-    for (const auto& item: params.multi_task_prompt_tokens) {
+    for (const auto& item: params.multi_task_prompt_tokens_) {
         const auto& task_id = item.first;
         const auto& tokens_id = item.second;
 
@@ -32,15 +32,14 @@ std::unordered_map<int, SystemPromptParams> SystemPromptConstructor::construct(c
         std::vector<size_t> shape = {tokens_id.size()};
         generate_input->input_ids = std::make_unique<ft::Buffer>(ft::MEMORY_CPU, ft::TYPE_INT32, shape, (void *)(tokens_id.data()));
         generate_input->generate_config = generate_config;
+        generate_input->need_release_resource = false;
 
         // TODO(xinfei.sxf) consider tp, consider sp engine
-        GenerateStreamPtr stream = std::make_shared<GenerateStream>(generate_input, engine->resourceContext());
-        stream->setNeedReleaseResource(false);
-        engine->enqueue(stream);
+        GenerateStreamPtr stream = engine->enqueue(generate_input);
 
         auto output1 = stream->nextOutput();
         assert(output1.ok());
-        assert(output1.value().aux_info.output_len == 1);
+        assert(output1.value().generate_outputs[0].aux_info.output_len == 1);
         assert(stream->finished());
 
         const auto& kv_cache = stream->kvCache();

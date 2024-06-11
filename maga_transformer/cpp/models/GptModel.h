@@ -16,12 +16,13 @@ struct GptModelDescription {
     ft::ActivationType   activation_type;
     ft::NormType         norm_type;
     double               layernorm_eps = 1e-5;
+    bool                 post_layernorm = false;
 };
 
 struct GptModelInitParams {
-    ft::DeviceBase*                device;
-    const ft::Weights&             weights;
-    const GptModelDescription& description;
+    ft::DeviceBase*           device;
+    const ft::Weights         weights;
+    const GptModelDescription description;
 };
 
 // A batch includes two parts: context batch and decoder batch.
@@ -43,8 +44,10 @@ struct GptModelInputs {
     ft::BufferPtr position_ids;    // [batch_size, seq_len]
 
     ft::BufferPtr prefix_lengths;   // [batch_size, seq_len]
-    ft::BufferPtr kv_cache_blocks;  // [layer_num, batch_size, 2, block_length], int64 block pointers
-    ft::BufferPtr kv_cache_scales;  // [layer_num, batch_size, 2, block_length], int64 block scales
+    ft::BufferPtr kv_cache_blocks;  // [layer_num, batch_size, 2, block_nums], int64 block pointers
+    ft::BufferPtr kv_cache_scales;  // [layer_num, batch_size, 2, block_nums], int64 block scales
+
+    ft::BufferPtr lora_ids;         // [batch_size]
 
 public:
     std::string debugString() const {
@@ -61,6 +64,7 @@ public:
     }
 };
 
+// TODO(xinfei.sxf) sync lora id and other member
 inline void tpSyncModelInputs(GptModelInputs &inputs, ft::DeviceBase* device) {
     if (device->getDeviceProperties().tp_size <= 1) {
         return;
@@ -69,10 +73,10 @@ inline void tpSyncModelInputs(GptModelInputs &inputs, ft::DeviceBase* device) {
     auto shape_hints = device->allocateBuffer({ft::DataType::TYPE_INT32, {shape_hints_size}, ft::AllocationType::HOST});
     auto shape_hints_ptr = shape_hints->data<int32_t>();
     shape_hints_ptr[0] = inputs.combo_tokens.get() ? inputs.combo_tokens->size() : 0; // combo_token_size
-    shape_hints_ptr[1] = inputs.combo_tokens.get() ? inputs.input_lengths->size() : 0; // total_batch_size
-    shape_hints_ptr[2] = inputs.combo_tokens.get() ? inputs.sequence_lengths->size() : 0; // generate_batch_size
-    shape_hints_ptr[3] = inputs.combo_tokens.get() ? inputs.kv_cache_blocks->shape()[0] : 0; // layer_num
-    shape_hints_ptr[4] = inputs.combo_tokens.get() ? inputs.kv_cache_blocks->shape()[3] : 0; // block_size
+    shape_hints_ptr[1] = inputs.input_lengths.get() ? inputs.input_lengths->size() : 0; // total_batch_size
+    shape_hints_ptr[2] = inputs.sequence_lengths.get() ? inputs.sequence_lengths->size() : 0; // generate_batch_size
+    shape_hints_ptr[3] = inputs.kv_cache_blocks.get() ? inputs.kv_cache_blocks->shape()[0] : 0; // layer_num
+    shape_hints_ptr[4] = inputs.kv_cache_blocks.get() ? inputs.kv_cache_blocks->shape()[3] : 0; // block_size
     shape_hints_ptr[5] = inputs.kv_cache_scales.get() != nullptr; // use_block_scale
     device->broadcast({{shape_hints}, 0});
     device->syncAndCheck();
@@ -82,7 +86,7 @@ inline void tpSyncModelInputs(GptModelInputs &inputs, ft::DeviceBase* device) {
         inputs.sequence_lengths = device->allocateBuffer({ft::DataType::TYPE_INT32, {(size_t)shape_hints_ptr[2]}, ft::AllocationType::HOST});
         inputs.kv_cache_blocks = device->allocateBuffer({ft::DataType::TYPE_UINT64, {(size_t)shape_hints_ptr[3], (size_t)shape_hints_ptr[1], 2, (size_t)shape_hints_ptr[4]}, ft::AllocationType::HOST});
         if (shape_hints_ptr[5]) {
-            inputs.kv_cache_scales = device->allocateBuffer({ft::DataType::TYPE_INT32, {(size_t)shape_hints_ptr[3], (size_t)shape_hints_ptr[0], 2, (size_t)shape_hints_ptr[4]}, ft::AllocationType::HOST});
+            inputs.kv_cache_scales = device->allocateBuffer({ft::DataType::TYPE_INT32, {(size_t)shape_hints_ptr[3], (size_t)shape_hints_ptr[1], 2, (size_t)shape_hints_ptr[4]}, ft::AllocationType::HOST});
         }
     }
     std::vector<ft::BufferPtr> buffers;
@@ -101,6 +105,9 @@ struct GptModelOutputs {
     ft::BufferPtr logits;
     ft::BufferPtr hidden_states;
     ft::BufferPtr all_hidden_states;
+
+    mutable ft::BufferPtr scatter_logits;
+    mutable ft::BufferPtr scatter_hidden_states;
 };
 
 class GptModel {
@@ -111,13 +118,14 @@ public:
     virtual GptModelOutputs forward(const GptModelInputs& inputs);
 
 private:
-    ft::AttentionCommonInputs prepareAttentionInputs(const GptModelInputs& inputs);
+    void prepareAttentionInputs(const GptModelInputs& inputs, ft::AttentionCommonInputs& attention_inputs);
 
 private:
     ft::DeviceBase* device_;
     const ft::DeviceProperties device_props_;
-    const ft::Weights& weights_;
-    const GptModelDescription& description_;
+    const ft::Weights          weights_;
+    const GptModelDescription  description_;
+
 };
 
 }  // namespace rtp_llm

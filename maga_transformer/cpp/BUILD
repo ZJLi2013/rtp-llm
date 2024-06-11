@@ -60,6 +60,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@havenask//aios/autil:synchronized_queue",
+        "//src/fastertransformer/utils:utils",
         "//src/fastertransformer/devices:devices_base",
         "//src/fastertransformer/devices:device_utils",
         "//src/fastertransformer/models:weights_define",
@@ -100,6 +101,7 @@ cc_library(
         "//:gpt_init_params_hdr",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "//src/fastertransformer/utils:utils",
         "//src/fastertransformer/devices:devices_base",
         "//src/fastertransformer/devices:device_utils",
         "//src/fastertransformer/models:weights_define",
@@ -276,30 +278,30 @@ cc_library(
     visibility = ["//visibility:public"]
 )
 
-cc_library(
-    name = "speculative_engine",
-    hdrs = glob([
-        "speculative_engine/*.h",
-    ]),
-    srcs = glob([
-        "speculative_engine/*.cc",
-    ]),
-    deps = torch_deps() + [
-        ":dataclass",
-        ":models",
-        ":schedulers",
-        ":engine_base",
-        ":normal_engine",
-        ":model_wrapper",
-        ":common",
-        ":system_prompt",
-        ":system_prompt_constructor",
-        "//src/fastertransformer/cuda:allocator_cuda",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-    visibility = ["//visibility:public"]
-)
+# cc_library(
+#     name = "speculative_engine",
+#     hdrs = glob([
+#         "speculative_engine/*.h",
+#     ]),
+#     srcs = glob([
+#         "speculative_engine/*.cc",
+#     ]),
+#     deps = torch_deps() + [
+#         ":dataclass",
+#         ":models",
+#         ":schedulers",
+#         ":engine_base",
+#         ":normal_engine",
+#         ":model_wrapper",
+#         ":common",
+#         ":system_prompt",
+#         ":system_prompt_constructor",
+#         "//src/fastertransformer/cuda:allocator_cuda",
+#         "@com_google_absl//absl/status",
+#         "@com_google_absl//absl/status:statusor",
+#     ],
+#     visibility = ["//visibility:public"]
+# )
 
 cc_library(
     name = "metrics",
@@ -353,7 +355,7 @@ cc_library(
         "//maga_transformer/cpp:dataclass",
         "//maga_transformer/cpp:normal_engine",
         "//maga_transformer/cpp:embedding_engine",
-        "//maga_transformer/cpp:speculative_engine",
+        # "//maga_transformer/cpp:speculative_engine",
         "//src/fastertransformer/devices:devices_base",
     ],
     visibility = ["//visibility:public"]
@@ -368,16 +370,4 @@ py_library(
         "//maga_transformer/cpp/proto:model_rpc_service_py_proto"
     ],
     visibility = ["//visibility:public"],
-)
-
-cc_binary(
-    name = "main",
-    srcs = ["main.cc"],
-    deps = [
-        ":model_rpc_server",
-        "//:gpt_init_params",
-        "//3rdparty/flash_attention2:flash_attention2_impl",
-    ] + torch_deps(),
-    linkopts = linkopts,
-    visibility = ["//visibility:public"]
 )

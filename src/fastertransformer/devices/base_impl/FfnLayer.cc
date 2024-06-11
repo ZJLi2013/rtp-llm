@@ -1,4 +1,5 @@
 #include "src/fastertransformer/devices/DeviceBase.h"
+#include "src/fastertransformer/devices/OpData.h"
 
 using namespace std;
 
@@ -41,41 +42,36 @@ FfnLayerOutput DeviceBase::ffnLayer(const FfnLayerParams& params) {
 
     RUNTIME_ASSERT_OP_ARG(!params.residual, "default FFN implementation does not support residual!");
 
-    auto up_buf = gemm({params.input, up_weight});
-
     auto up_output = loraLinear({params.input,
                                  std::nullopt,
                                  *(params.weights.up_weight),
                                  std::nullopt});
 
     if (FFNDispatch::dispatch(params) == FFNDispatch::FFNType::Gate) {
-        auto gate_output = loraLinear({params.input,
-                                       std::nullopt,
-                                       *(params.weights.gate_weight),
-                                       std::nullopt});
+        {
+            auto gate_output = loraLinear({params.input,
+                                        std::nullopt,
+                                        *(params.weights.gate_weight),
+                                        std::nullopt});
 
-        activation({params.activation_type,
-                    *(gate_output.output),
-                    std::nullopt,
-                    *(up_output.output),
-                    std::nullopt});
+            activation({params.activation_type,
+                        *(up_output.output),
+                        mayGetRef(params.weights.up_weight->bias),
+                        *(gate_output.output),
+                        std::nullopt});
+            gate_output.output.reset();
+        }
 
-        auto output = loraLinear({*(gate_output.output),
+        auto output = loraLinear({*(up_output.output),
                                   std::nullopt,
                                   *(params.weights.down_weight),
                                   std::nullopt});
 
         return FfnLayerOutput({move(output.output)});
-        // auto gate_buf = gemm({params.input, gate_weight});
-        // activation({params.activation_type, *gate_buf, std::nullopt, *up_buf, std::nullopt});
-        // auto output = gemm({*gate_buf, down_weight});
-        // return FfnLayerOutput({move(output)});
-    }
-
-    else if (FFNDispatch::dispatch(params) == FFNDispatch::FFNType::NoGate) {
+    } else if (FFNDispatch::dispatch(params) == FFNDispatch::FFNType::NoGate) {
         activation({params.activation_type,
                     *(up_output.output),
-                    std::nullopt,
+                    mayGetRef(params.weights.up_weight->bias),
                     std::nullopt,
                     std::nullopt});
 
@@ -85,16 +81,7 @@ FfnLayerOutput DeviceBase::ffnLayer(const FfnLayerParams& params) {
                                   std::nullopt});
 
         return FfnLayerOutput({move(output.output)});
-        // activation({params.activation_type, *up_buf, std::nullopt, std::nullopt, std::nullopt});
-        // auto output = gemm({*up_buf, down_weight});
-        // return FfnLayerOutput({move(output)});
-    }
-
-    else if (FFNDispatch::dispatch(params) == FFNDispatch::FFNType::Moe) {
-        throw OpException(OpErrorType::ERROR_UNIMPLEMENTED);
-    }
-
-    else {
+    } else {
         throw OpException(OpErrorType::ERROR_UNIMPLEMENTED);
     }
 }

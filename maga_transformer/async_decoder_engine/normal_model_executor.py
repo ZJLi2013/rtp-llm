@@ -56,7 +56,7 @@ class NormalModelExecutor(ExecutorBase):
     def process(self, batch_query: BatchQuery) -> None:
         all_hidden_states = self._process(batch_query)
         hidden_states = self._select_last_hidden_states(batch_query, all_hidden_states)
-        logits = self._post_transformer_nn(hidden_states)
+        hidden_states, logits = self._post_transformer_nn(hidden_states)
         self._calculate_loss(batch_query, all_hidden_states)
         if g_parallel_info.tp_size > 1 and g_parallel_info.tp_rank > 0:
             return
@@ -90,6 +90,9 @@ class NormalModelExecutor(ExecutorBase):
             k_cache_scale, v_cache_scale = self.cache_manager_.get_kv_cache_scale_base()
             prefix_lengths, count_length, max_prefix_length = batch_query.get_prefix_args()
 
+        input_lengths=torch.tensor(batch_query.context_lengths_list, dtype=torch.int32)
+        sequence_lengths=torch.tensor([i - 1 for i in batch_query.seq_lengths_list], dtype=torch.int32)
+
         with torch.cuda.nvtx.range('run_model'):
             hidden_states = self.model_ops.gpt_op.forward(
                 decoder_input=input_embeds,
@@ -97,8 +100,8 @@ class NormalModelExecutor(ExecutorBase):
                 value_cache=v_cache,
                 key_cache_scale=k_cache_scale,
                 value_cache_scale=v_cache_scale,
-                input_lengths=torch.tensor(batch_query.context_lengths_list, dtype=torch.int32),
-                sequence_lengths=torch.tensor([i - 1 for i in batch_query.seq_lengths_list], dtype=torch.int32),
+                input_lengths=input_lengths,
+                sequence_lengths=sequence_lengths,
                 block_index_map=batch_query.cache_block_indice,
                 position_ids=position_ids,
                 attention_mask=attention_mask,
@@ -257,7 +260,7 @@ class NormalModelExecutor(ExecutorBase):
             if any(torch.isnan(logits_cpu).numpy().tolist()):
                 raise Exception(f'logits has nan: {logits_cpu}')
 
-        return logits
+        return hidden_states, logits
 
     def _reconstruct_sampler(self, batch_query: BatchQuery) -> None:
         if self.model_ops.generate_config.is_same(batch_query.merge_generate_config):
@@ -278,7 +281,7 @@ class NormalModelExecutor(ExecutorBase):
                 continue
             hidden_states = self._select_context_hidden_states(
                 batch_query, all_hidden_states, context_idx)
-            logits = self._post_transformer_nn(hidden_states)
+            hidden_states, logits = self._post_transformer_nn(hidden_states)
             if g_parallel_info.tp_size > 1 and g_parallel_info.tp_rank > 0:
                 continue
             stream = batch_query.context_streams[context_idx]

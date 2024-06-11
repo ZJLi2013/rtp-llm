@@ -1,6 +1,13 @@
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "cuda_default_copts",
+    "if_cuda",
+)
+
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "rocm_default_copts",
+    "if_rocm",
 )
 
 def rpm_library(
@@ -138,4 +145,10 @@ def copts():
     ]
 
 def cuda_copts():
-    return copts() + cuda_default_copts()
+    # add --objdir-as-tempdir to rm tmp file after build
+    return copts() + cuda_default_copts() + if_cuda(["-nvcc_options=objdir-as-tempdir"])
+
+def rocm_copts():
+    return copts() + rocm_default_copts() + [
+        "-Wc++17-extensions",
+    ]

@@ -11,13 +11,10 @@
 namespace rtp_llm {
 class ModelRpcServiceImpl: public ModelRpcService::Service {
 public:
-    explicit ModelRpcServiceImpl(
-            const MagaInitParams&                                                   maga_init_params,
-            const std::vector<std::unordered_map<std::string, ft::ConstBufferPtr>>& layer_weights,
-            const std::unordered_map<std::string, ft::ConstBufferPtr>&              weights);
-    grpc::Status generate_stream(grpc::ServerContext*                  context,
-                                 const GenerateInputPB*                request,
-                                 grpc::ServerWriter<GenerateOutputPB>* writer) override;
+    explicit ModelRpcServiceImpl(const EngineInitParams& maga_init_params);
+    grpc::Status generate_stream(grpc::ServerContext*                   context,
+                                 const GenerateInputPB*                 request,
+                                 grpc::ServerWriter<GenerateOutputsPB>* writer) override;
     void addLoRA(const int64_t                                                   lora_id,
                  const std::vector<std::unordered_map<std::string, ft::ConstBufferPtr>>& lora_a_weights,
                  const std::vector<std::unordered_map<std::string, ft::ConstBufferPtr>>& lora_b_weights);
@@ -25,7 +22,6 @@ public:
 
 private:
     std::unique_ptr<NormalEngine> engine_ = nullptr;
-    kmonitor::MetricsReporterPtr  metrics_reporter_ = nullptr;
 };
 
 }  // namespace rtp_llm

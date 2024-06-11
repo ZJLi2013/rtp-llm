@@ -10,6 +10,7 @@ cc_library(
     ]),
     deps = [
         "//src/fastertransformer/core:allocator",
+        "//src/fastertransformer/core:memory_tracker",
         "//src/fastertransformer/core:buffer",
         "//src/fastertransformer/utils:utils",
     ],
@@ -27,6 +28,7 @@ cc_library(
     ]),
     deps = [
         "devices_base",
+        "//src/fastertransformer/core:buffer_torch"
     ],
     visibility = ["//visibility:public"],
     copts = copts(),

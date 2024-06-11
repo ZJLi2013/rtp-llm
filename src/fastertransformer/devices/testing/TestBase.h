@@ -4,12 +4,13 @@
 #include <torch/torch.h>
 
 #include "src/fastertransformer/devices/DeviceFactory.h"
-#include "src/fastertransformer/devices/utils/BufferTorchUtils.h"
+#include "src/fastertransformer/core/torch_utils/BufferTorchUtils.h"
 #include "src/fastertransformer/core/Buffer.h"
 #include "src/fastertransformer/utils/logger.h"
 #include "maga_transformer/cpp/cache/CacheManager.h"
 #include "maga_transformer/cpp/dataclass/StreamCacheResource.h"
 #include "maga_transformer/cpp/utils/KvCacheUtils.h"
+#include "autil/EnvUtil.h"
 
 #include <numeric>
 #include <stdlib.h>
@@ -34,6 +35,11 @@ public:
         auto device_params = device_name
             ? GlobalDeviceParams{{{getDeviceType(device_name), DeviceInitParams{0}}}}
             : DeviceFactory::getDefaultGlobalDeviceParams();
+        auto& default_device_params = device_params.device_params[0].second;
+        default_device_params.device_reserve_memory_bytes =
+            autil::EnvUtil::getEnv("DEVICE_RESERVE_MEMORY_BYTES", device_reserve_memory_size_);
+        default_device_params.host_reserve_memory_bytes =
+            autil::EnvUtil::getEnv("HOST_RESERVE_MEMORY_BYTES", host_reserve_memory_size_);
         DeviceFactory::initDevices(device_params);
         device_ = DeviceFactory::getDefaultDevice();
     }
@@ -290,6 +296,8 @@ protected:
     double rtol_ = 1e-03;
     double atol_ = 1e-03;
     rtp_llm::CacheManagerPtr cache_manager_;
+    size_t device_reserve_memory_size_ = 0L;
+    size_t host_reserve_memory_size_ = 1L * 1024 * 1024 * 1024; // 1GB;
 };
 
 int main(int argc, char** argv) {

@@ -14,8 +14,7 @@ from maga_transformer.config.gpt_init_model_parameters import GptInitModelParame
 from maga_transformer.models.downstream_modules.custom_module import CustomModule, CustomHandler
 from maga_transformer.utils.tensor_utils import get_last_token_from_combo_tokens, get_first_token_from_combo_tokens
 from maga_transformer.models.downstream_modules.embedding.misc import combo_to_batch, EmbeddingRendererBase
-
-from .api_datatype import EmbeddingResponseType
+from maga_transformer.models.downstream_modules.embedding.api_datatype import EmbeddingResponseType, EmbeddingResponseFormat
 
 class DenseEmbeddingModule(CustomModule):
     def __init__(self, config: GptInitModelParameters, tokenizer: PreTrainedTokenizerBase):
@@ -32,14 +31,13 @@ class DenseEmbeddingRenderer(EmbeddingRendererBase):
         super().__init__(*args, ** kwargs)
         self.embedding_type = EmbeddingResponseType.DENSE
 
-    def similar_func(self, left: Any, right: Any) -> float:        
-        assert isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor)
-        return float(left @ right.T) 
-    
-    def embedding_func(self, x: Any) -> List[float]:
-        assert isinstance(x, torch.Tensor)
-        return x.tolist()
-    
+    def similar_func(self, left: EmbeddingResponseFormat, right: EmbeddingResponseFormat) -> float:
+        return float(torch.tensor(left.embedding) @ torch.tensor(right.embedding).T)
+
+    def embedding_func(self, res: torch.Tensor, input_length: int, input_tokens: torch.Tensor) -> List[float]:
+        assert isinstance(res, torch.Tensor)
+        return res.tolist()
+
     async def render_log_response(self, response: Dict[str, Any]):
         log_response = copy.copy(response)
         if 'data' in log_response:
@@ -52,7 +50,7 @@ class NormalHandler(CustomHandler):
         super().__init__(config)
         self.is_causal = config.is_causal
 
-    def forward(self, input_ids: torch.Tensor, hidden_states: torch.Tensor, input_lengths: torch.Tensor, config: Dict[str, Any]) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor, hidden_states: torch.Tensor, input_lengths: torch.Tensor) -> torch.Tensor:
         if self.is_causal:
             ts = get_last_token_from_combo_tokens(hidden_states, input_lengths)
         else:
@@ -85,7 +83,7 @@ class SentenceTransformerHandler(CustomHandler):
                 modules[module_config["name"]] = module
         self.model = nn.Sequential(modules).cuda().to(dtype)
 
-    def forward(self, input_ids: torch.Tensor, hidden_states: torch.Tensor, input_lengths: torch.Tensor, config: Dict[str, Any]) -> List[Any]:
+    def forward(self, input_ids: torch.Tensor, hidden_states: torch.Tensor, input_lengths: torch.Tensor) -> List[Any]:
         batch_input_ids, batch_hidden_states, batch_attention_mask = combo_to_batch(hidden_states, input_ids, input_lengths)
         input =  {
             "token_embeddings": batch_hidden_states,

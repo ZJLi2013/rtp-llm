@@ -1,8 +1,9 @@
 #include "src/fastertransformer/th_op/multi_gpu_gpt/RtpEmbeddingOp.h"
-
 #include "maga_transformer/cpp/common/status_util.h"
 #include "maga_transformer/cpp/embedding_engine/EmbeddingQueryConverter.h"
-#include "src/fastertransformer/devices/utils/BufferTorchUtils.h"
+#include "src/fastertransformer/core/torch_utils/BufferTorchUtils.h"
+#include "src/fastertransformer/utils/pybind_utils.h"
+#include "maga_transformer/cpp/dataclass/EngineInitParameter.h"
 
 using namespace std;
 
@@ -10,44 +11,25 @@ namespace ft = fastertransformer;
 namespace th = torch;
 
 namespace torch_ext {
+RtpEmbeddingOp::RtpEmbeddingOp() {}
 
-RtpEmbeddingOp::RtpEmbeddingOp(const c10::intrusive_ptr<ft::GptInitParameter> gpt_init_params, const c10::intrusive_ptr<EmbeddingHandlerOp> handler_op): handler_(handler_op->getHandler()) {
-}
-
-std::vector<std::string> RtpEmbeddingOp::handlerTensorInfo() {
-    return handler_.tensorInfo();
-}
-
-void RtpEmbeddingOp::init(const c10::intrusive_ptr<ft::GptInitParameter>&               gpt_init_params,
-                    const std::vector<std::unordered_map<std::string, th::Tensor>>& layer_weights,
-                    const c10::Dict<std::string, th::Tensor>&                       weights) {
+void RtpEmbeddingOp::init(const ft::GptInitParameter& gpt_init_params, py::object handler_impl, py::object py_layers_weights, py::object py_global_weights) {
     AUTIL_ROOT_LOG_CONFIG();
     AUTIL_ROOT_LOG_SETLEVEL(INFO);
+
+    auto global_weights = rtp_llm::WeightsConverter::convertPyWeightsMap(py_global_weights);
+    auto layers_weights = rtp_llm::WeightsConverter::convertPyWeightsMapVec(py_layers_weights);
+    rtp_llm::EngineInitParams params(gpt_init_params, layers_weights, global_weights);
+    // kmon metric init
     (void)rtp_llm::initKmonitorFactory();
     auto kmon_tags = rtp_llm::getHippoTags();
-    metrics_reporter_.reset(new kmonitor::MetricsReporter("", "", kmon_tags));
-
-    rtp_llm::MagaInitParams params;
-    params.gpt_init_parameter = gpt_init_params;
-    ft::DeviceFactory::initDevices(ft::DeviceFactory::getDefaultGlobalDeviceParams());
-    for (auto& it : weights) {
-        global_weights_.emplace(it.key(), ft::torchTensor2Buffer(it.value()));
-    }
-    for (auto& weights : layer_weights) {
-        std::unordered_map<std::string, ft::ConstBufferPtr> __weights;
-        for (auto& it : weights) {
-            __weights.emplace(it.first, ft::torchTensor2Buffer(it.second));
-        }
-        layer_weights_.emplace_back(std::move(__weights));
-    }
-    THROW_IF_STATUS_ERROR(handler_.loadTensor(global_weights_));
-    embedding_engine_.reset(new rtp_llm::EmbeddingEngine(params, layer_weights_, global_weights_, handler_, metrics_reporter_));
+    params.metrics_reporter.reset(new kmonitor::MetricsReporter("", "", kmon_tags));
+    embedding_engine_.reset(new rtp_llm::EmbeddingEngine(params, handler_impl));
 }
 
 void RtpEmbeddingOp::stop() {
     if (!is_server_shutdown_) {
         (void)embedding_engine_->stop();
-        is_server_shutdown_ = true;
     }
 }
 
@@ -66,18 +48,12 @@ RtpEmbeddingOp::~RtpEmbeddingOp() {
     stop();
 }
 
-}  // namespace torch_ext
-
-
-static auto rtpEmbeddingOpTHS =
-#ifdef LEGACY_THS
-    torch::jit::class_<torch_ext::RtpEmbeddingOp>("FasterTransformerRtpEmbeddingOp")
-#else
-    torch::jit::class_<torch_ext::RtpEmbeddingOp>("FasterTransformer", "RtpEmbeddingOp")
-#endif
-        .def(torch::jit::init<c10::intrusive_ptr<ft::GptInitParameter>, c10::intrusive_ptr<torch_ext::EmbeddingHandlerOp>>())  // quant_pre_scales
+void registerRtpEmbeddingOp(const py::module& m) {
+    pybind11::class_<torch_ext::RtpEmbeddingOp>(m, "RtpEmbeddingOp")
+        .def(pybind11::init<>())
         .def("init", &torch_ext::RtpEmbeddingOp::init)
         .def("stop", &torch_ext::RtpEmbeddingOp::stop)
-        .def("decode", &torch_ext::RtpEmbeddingOp::decode)
-        .def("handler_tensor_info", &torch_ext::RtpEmbeddingOp::handlerTensorInfo);
+        .def("decode", &torch_ext::RtpEmbeddingOp::decode, py::call_guard<py::gil_scoped_release>());
+}
 
+}  // namespace torch_ext

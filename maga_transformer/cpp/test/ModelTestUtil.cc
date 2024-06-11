@@ -1,6 +1,6 @@
 #include <torch/script.h>
 #include "maga_transformer/cpp/test/ModelTestUtil.h"
-#include "maga_transformer/cpp/dataclass/MagaInitParameter.h"
+#include "maga_transformer/cpp/dataclass/EngineInitParameter.h"
 #include "src/fastertransformer/models/W.h"
 
 #include <filesystem>
@@ -42,7 +42,6 @@ const vector<string> layer_weight_keys = {
     W::ffn_ln_beta,
     W::ffn_w2,
     W::ffn_b2,
-    W::ffn_gate,
     W::post_ffn_ln_gamma,
     W::post_ffn_ln_beta
 };
@@ -76,9 +75,6 @@ unique_ptr<const Weights> loadWeightsFromDirViaTorchScript(std::string dir_path)
     for (const auto& key : global_weight_keys) {
         try {
             auto tensor = py_tensors_container.attr(key).toTensor();
-            if (key == W::lm_head) {
-                tensor = tensor.t().contiguous();
-            }
             py_weights.model_global_weights_[key] = tensor;
             FT_LOG_INFO("model Tensor [%s] loaded: %s", key.c_str(), tensor.toString().c_str());
         } catch (const exception& e) {

@@ -8,7 +8,7 @@ from maga_transformer.models.downstream_modules.common_input_generator import Co
 from maga_transformer.config.gpt_init_model_parameters import GptInitModelParameters
 from maga_transformer.utils.tensor_utils import get_last_token_from_combo_tokens, get_first_token_from_combo_tokens
 from maga_transformer.models.downstream_modules.classifier.api_datatype import ClassifierRequest, ClassifierResponse
-from maga_transformer.async_decoder_engine.embedding.embedding_stream import EngineInputs, EngineOutputs
+from maga_transformer.async_decoder_engine.embedding.interface import EngineInputs, EngineOutputs
 
 from .util import load_num_labels
 
@@ -50,7 +50,7 @@ class ClassifierHandler(CustomHandler):
         self.linear.bias.data = tensor_map['classifier.bias']
         self.linear = self.linear.to(data_type).eval().cuda()
         
-    def forward(self, input_ids: torch.Tensor, hidden_states: torch.Tensor, input_lengths: torch.Tensor, config: Dict[str, Any]) -> List[torch.Tensor]:
+    def forward(self, input_ids: torch.Tensor, hidden_states: torch.Tensor, input_lengths: torch.Tensor) -> List[torch.Tensor]:
         #TODO test it
         if self.config_.is_causal:
             last_tokens = get_last_token_from_combo_tokens(hidden_states, input_lengths)

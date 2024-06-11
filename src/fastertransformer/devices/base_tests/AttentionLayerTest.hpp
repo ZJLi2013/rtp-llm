@@ -3,9 +3,9 @@
 #include <torch/torch.h>
 
 #include "src/fastertransformer/devices/testing/TestBase.h"
-#include "src/fastertransformer/devices/utils/BufferUtils.h"
+#include "src/fastertransformer/core/BufferHelper.h"
 #include "src/fastertransformer/devices/utils/DebugUtils.h"
-#include "src/fastertransformer/devices/utils/BufferTorchUtils.h"
+#include "src/fastertransformer/core/torch_utils/BufferTorchUtils.h"
 #include "src/fastertransformer/devices/torch_impl/GptModel.hpp"
 
 #define private public
@@ -84,13 +84,19 @@ void AttentionLayerTest<T>::testAttentionLayer(
 
     GptModelInputs model_inputs;
     model_inputs.combo_tokens = device_->clone({*tensorToBuffer(input_tensor)});
-    model_inputs.input_lengths = device_->clone({*vector2Buffer(input_lengths)});
-    model_inputs.sequence_lengths = device_->clone({*vector2Buffer(sequence_lengths)});
+    model_inputs.input_lengths = device_->clone({*vector2Buffer(input_lengths), AllocationType::HOST});
+    model_inputs.sequence_lengths = device_->clone({*vector2Buffer(sequence_lengths), AllocationType::HOST});
     const auto mask_buf = tensorToBuffer(mask_tensor);
     model_inputs.attention_mask = mask_buf;
     auto kv_cache = torch::empty(0);
     model_inputs.kv_cache_blocks = allocateKVBlocks(cache_conf, input_lengths, kv_cache);
-    auto common_inputs = model_->prepareAttentionInputs(model_inputs);
+    auto input_lengths_device = device_->clone({*model_inputs.input_lengths});
+    auto sequence_lengths_device = device_->clone({*model_inputs.sequence_lengths});
+    AttentionCommonInputs common_inputs({
+            *input_lengths_device,
+            *sequence_lengths_device
+        });
+    model_->prepareAttentionInputs(model_inputs, common_inputs);
     auto layer_cache_blocks = (*model_inputs.kv_cache_blocks)[0];
     common_inputs.kv_cache_blocks = layer_cache_blocks;
     printBufferData(common_inputs.kv_cache_blocks.value().get(), "kv_cache_blocks");
@@ -116,6 +122,7 @@ void AttentionLayerTest<T>::testAttentionLayer(
     auto attention_weights = getAttentionWeights(gpt_attention);
     AttentionLayerParams params {
         *input_buffer,
+        nullptr,
         attention_conf,
         attention_weights,
         common_inputs
@@ -151,6 +158,7 @@ TEST_F(AttentionLayerTestFp16, testSimpleContextAttention) {
     attention_conf.size_per_head = 64;
     attention_conf.hidden_size = 1024;
     attention_conf.rope_config.embedding_dim = attention_conf.size_per_head;
+    attention_conf.mask_type = AttentionMaskType::causalMask;
     testAttentionLayer(cache_conf, attention_conf, {3}, {});
 }
 

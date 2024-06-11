@@ -44,6 +44,11 @@ enum class CutlassTileConfig
     CtaShape32x128x128_WarpShape32x32x128,
 
     // TensorCore configs CTA_N = 128, CTA_K = 64
+    // Warp configs for M=16
+    CtaShape16x128x64_WarpShape16x32x64,
+    CtaShape16x256x64_WarpShape16x64x64,
+
+    // TensorCore configs CTA_N = 128, CTA_K = 64
     // Warp configs for M=32
     CtaShape32x128x64_WarpShape32x32x64,
 
@@ -78,6 +83,26 @@ struct CutlassGemmConfig
     SplitKStyle split_k_style = SplitKStyle::NO_SPLIT_K;
     int split_k_factor = -1;
     int stages = -1;
+
+    CutlassGemmConfig() = default;
+
+    CutlassGemmConfig(
+        CutlassTileConfig tile_config, SplitKStyle split_k_style, int split_k_factor, int stages):
+        tile_config(tile_config),
+        split_k_style(split_k_style),
+        split_k_factor(split_k_factor),
+        stages(stages){}
+
+    CutlassGemmConfig(
+        CutlassTileConfig tile_config, int split_k_factor, int stages):
+        tile_config(tile_config),
+        split_k_factor(split_k_factor),
+        stages(stages), 
+        split_k_style(split_k_factor > 1 ? SplitKStyle::SPLIT_K_SERIAL : SplitKStyle::NO_SPLIT_K){}
+
+    bool operator==(CutlassGemmConfig const& r) const {
+        return tile_config == r.tile_config && split_k_style == r.split_k_style && split_k_factor == r.split_k_factor && stages == r.stages;
+    }
 };
 
 } // namespace cutlass_extensions

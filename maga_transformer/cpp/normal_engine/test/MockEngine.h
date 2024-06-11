@@ -17,20 +17,26 @@ namespace ft = fastertransformer;
 namespace rtp_llm {
 
 struct CustomConfig {
-    std::map<int, std::vector<int>> multi_task_prompt_tokens;
     bool reuse_cache = false;
+    bool int8_kv_cache = false;
+    std::map<int, std::vector<int>> multi_task_prompt_tokens;
 };
 
-std::shared_ptr<NormalEngine> createMockEngine(DeviceBase* device, const CustomConfig& config) {
-    rtp_llm::MagaInitParams rtp_llm_params;
-    rtp_llm_params.gpt_init_parameter = c10::make_intrusive<GptInitParameter>(2, 64, 2, 20, 20, 128);
-    auto& params        = *rtp_llm_params.gpt_init_parameter;
+std::shared_ptr<NormalEngine> createMockEngine(DeviceBase* device, const CustomConfig& config, GptInitParameter& params) {
+    params.head_num_ = 2;
+    params.size_per_head_ = 64;
+    params.num_layers_ = 2;
+    params.max_seq_len_ = 20;
+    params.vocab_size_ = 20;
+    params.hidden_size_ = 128;
+    // auto params = GptInitParameter(2, 64, 2, 20, 20, 128);
     params.head_num_kv_ = 2;
     params.block_nums_  = 100;
     params.reuse_cache_ = config.reuse_cache;
-    params.multi_task_prompt_tokens = config.multi_task_prompt_tokens;
+    params.multi_task_prompt_tokens_ = config.multi_task_prompt_tokens;
     params.max_generate_batch_size_ = 128;
     params.max_context_batch_size_  = 128;
+    params.int8_kv_cache_ = config.int8_kv_cache;
 
     const size_t inter_size    = 512;
     params.inter_size_         = inter_size;
@@ -47,7 +53,7 @@ std::shared_ptr<NormalEngine> createMockEngine(DeviceBase* device, const CustomC
     auto word_embeddings =
         make_unique<const ft::Buffer>(mem_type, data_type, vector<size_t>{(size_t)20, hidden_units}, data->data());
     auto lm_head =
-        make_unique<const ft::Buffer>(mem_type, data_type, vector<size_t>{hidden_units, (size_t)20}, data->data());
+        make_unique<const ft::Buffer>(mem_type, data_type, vector<size_t>{(size_t)20, hidden_units}, data->data());
     std::unordered_map<std::string, ft::ConstBufferPtr> global_weights;
     global_weights.emplace(W::embedding, std::move(word_embeddings));
     global_weights.emplace(W::lm_head, std::move(lm_head));
@@ -97,16 +103,16 @@ std::shared_ptr<NormalEngine> createMockEngine(DeviceBase* device, const CustomC
         weights.emplace(W::attn_o_b, std::move(attention_output_weight_beta));
         weights.emplace(W::post_ln_gamma, std::move(post_layernorm_weights));
         weights.emplace(W::post_ln_beta, std::move(post_layernorm_beta));
-        weights.emplace(W::ffn_w1, std::move(ffn_weight));
-        weights.emplace(W::ffn_b1, std::move(ffn_weight_beta));
+        weights.emplace(W::ffn_w3, std::move(ffn_weight));
+        weights.emplace(W::ffn_b3, std::move(ffn_weight_beta));
         weights.emplace(W::ffn_w2, std::move(ffn_output_weight));
         weights.emplace(W::ffn_b2, std::move(ffn_output_weight_beta));
         weights.emplace(W::ffn_ln_gamma, std::move(ffn_layer_norm));
         weights.emplace(W::ffn_ln_beta, std::move(ffn_layer_norm_beta));
         layer_weights.push_back(std::move(weights));
     }
-
-    std::shared_ptr<NormalEngine> engine = make_shared<NormalEngine>(rtp_llm_params, layer_weights, global_weights);
+    rtp_llm::EngineInitParams rtp_llm_params(params, layer_weights, global_weights);
+    std::shared_ptr<NormalEngine> engine = make_shared<NormalEngine>(rtp_llm_params);
     return engine;
 }
 

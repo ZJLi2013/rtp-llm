@@ -72,11 +72,11 @@ class Starcoder2WeightInfo(ModelDeployWeightInfo):
                                identity)
             ], identity),
             WeightInfo(
-                W.ffn_w1,
+                W.ffn_w3,
                 [CkptWeightInfo('model.layers.{i}.mlp.c_fc.weight', identity)],
                 transpose),
             WeightInfo(
-                W.ffn_b1,
+                W.ffn_b3,
                 [CkptWeightInfo('model.layers.{i}.mlp.c_fc.bias', identity)],
                 identity),
             WeightInfo(W.ffn_w2, [
@@ -136,8 +136,7 @@ class StarCoder2(GPT):
         config.special_tokens.bos_token_id = config_json['bos_token_id']
         config.activation_type = config_json['activation_function']
         config.has_post_decoder_layernorm = True
-        config.rotary_embedding_base = int(
-            config_json.get('rope_theta', 1000000))
+        config.rotary_embedding_base = config_json.get('rope_theta', 1000000)
         config.rotary_embedding_dim = config.size_per_head
         config.tie_word_embeddings = config_json.get('tie_word_embeddings', False)
         return config

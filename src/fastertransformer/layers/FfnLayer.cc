@@ -187,16 +187,15 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
     constexpr bool use_sparse_gemm = false;
     constexpr int  m_padded        = 0;
 #endif
-
     const int cur_inter_size = quant_algo_.weightOnly() ? inter_padding_size : inter_size;
-    // gemm used inter_size, int8 use inter_padding_size
     gemm_runner_->Gemm(m,
                        cur_inter_size,
                        hidden_units_,
                        input_tensor,
-                       &ffn_weights->intermediate_weight,
+                       &ffn_weights->intermediate_weight2,
                        inter_buf_,
                        ffn_dynamic_scale);
+
     // lora
     lora_gemm_->applyLoRA(m,
                           batch_size,
@@ -204,40 +203,40 @@ void FfnLayer<T>::forward(TensorMap* output_tensors, TensorMap* input_tensors, c
                           hidden_units_,
                           cur_inter_size,
                           lora_ids,
-                          ffn_weights->intermediate_weight.lora_weights,
+                          ffn_weights->intermediate_weight2.lora_weights,
                           input_tensor,
                           inter_buf_);
-    print_bsd(layer_id, "ffn1", inter_buf_, 1, m, cur_inter_size);
+
+    print_bsd(layer_id, "ffn_up", inter_buf_, 1, m, cur_inter_size);
 
     if (use_gated_activation_) {
+        // gemm used inter_size, int8 use inter_padding_size
         gemm_runner_->Gemm(m,
                            cur_inter_size,
                            hidden_units_,
                            input_tensor,
-                           &ffn_weights->intermediate_weight2,
+                           &ffn_weights->intermediate_weight,
                            inter_buf_2_,
                            ffn_dynamic_scale);
-
         // lora
         lora_gemm_->applyLoRA(m,
-                            batch_size,
-                            lora_input_lengths,
-                            hidden_units_,
-                            cur_inter_size,
-                            lora_ids,
-                            ffn_weights->intermediate_weight2.lora_weights,
-                            input_tensor,
-                            inter_buf_2_);
-
-        print_bsd(layer_id, "ffn2", inter_buf_2_, 1, m, cur_inter_size);
+                              batch_size,
+                              lora_input_lengths,
+                              hidden_units_,
+                              cur_inter_size,
+                              lora_ids,
+                              ffn_weights->intermediate_weight.lora_weights,
+                              input_tensor,
+                              inter_buf_2_);
+        print_bsd(layer_id, "ffn_gate", inter_buf_2_, 1, m, cur_inter_size);
     }
     POP_RANGE;  // End for NVTX Range: FFN gemm 1
 
     PUSH_RANGE(stream_, "add_bias_act");
     genericActivation(layer_id,
                       m,
-                      ffn_weights->intermediate_weight.bias,
-                      use_gated_activation_ ? ffn_weights->intermediate_weight2.bias : nullptr,
+                      ffn_weights->intermediate_weight2.bias,
+                      use_gated_activation_ ? ffn_weights->intermediate_weight.bias : nullptr,
                       input_tensors->at("ia3_tasks", {MEMORY_GPU, TYPE_INT32, {}, nullptr}).getPtr<const int>(),
                       ffn_weights->ia3_weight.kernel,
                       (float*)nullptr,
@@ -452,24 +451,25 @@ void FfnLayer<T>::allocateBuffer(size_t token_num, bool use_moe) {
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
     if (use_moe) {
         moe_gates_buf_ =
-            (float*)allocator_->reMalloc(moe_gates_buf_, sizeof(float) * pad_to_multiple_of_16(token_num * expert_num_), false);
+            (float*)allocator_->reMalloc(moe_gates_buf_, sizeof(float) * pad_to_multiple_of_16(token_num * expert_num_));
         size_t moe_workspace_size = moe_plugin_->getWorkspaceSize(token_num);
-        moe_fc_workspace_         = (char*)allocator_->reMalloc(moe_fc_workspace_, moe_workspace_size, false);
+        moe_fc_workspace_         = (char*)allocator_->reMalloc(moe_fc_workspace_, moe_workspace_size);
     } else {
-        shared_gating_scale_buf_ =  (T*)allocator_->reMalloc(shared_gating_scale_buf_, sizeof(T) * token_num, false);
+        shared_gating_scale_buf_ =  (T*)allocator_->reMalloc(shared_gating_scale_buf_, sizeof(T) * token_num);
         const auto type_size = sizeof(T);
         inter_buf_ =
-            (T*)allocator_->reMalloc(inter_buf_, type_size * token_num * inter_padding_size_ + token_num * 4, false);
+            (T*)allocator_->reMalloc(inter_buf_, type_size * token_num * inter_padding_size_ + token_num * 4);
         if (use_gated_activation_) {
             inter_buf_2_ = (T*)allocator_->reMalloc(
-                inter_buf_2_, sizeof(T) * token_num * inter_padding_size_ + token_num * 4, false);
+                inter_buf_2_, sizeof(T) * token_num * inter_padding_size_ + token_num * 4);
         }
         inter_buf_normed_ = (T*)(allocator_->reMalloc(
-            inter_buf_normed_, sizeof(T) * token_num * inter_padding_size_ + token_num * 4, inter_size_ != inter_padding_size_));
+            inter_buf_normed_, sizeof(T) * token_num * inter_padding_size_ + token_num * 4));
+        cudaMemsetAsync(inter_buf_normed_, 0, sizeof(T) * token_num * inter_padding_size_ + token_num * 4, stream_);
     }
 
     if(quant_algo_.smoothQuantInt8()){
-        ffn_dynamic_scale_2_ = (float*)(allocator_->reMalloc(ffn_dynamic_scale_2_, sizeof(float)* token_num, false));
+        ffn_dynamic_scale_2_ = (float*)(allocator_->reMalloc(ffn_dynamic_scale_2_, sizeof(float)* token_num));
     }
     is_allocate_buffer_ = true;
 }

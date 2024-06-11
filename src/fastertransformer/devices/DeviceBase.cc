@@ -1,4 +1,5 @@
 #include "src/fastertransformer/devices/DeviceBase.h"
+#include "src/fastertransformer/core/TrackerAllocator.h"
 
 using namespace std;
 
@@ -15,6 +16,12 @@ void DeviceBase::init() {
 
 DeviceStatus DeviceBase::getDeviceStatus() {
     return DeviceStatus();
+}
+
+void DeviceBase::traceMemoryUsage() {
+    FT_LOG_INFO("Device Memory: %s", buffer_manager_->printAllocationRecords(getAllocator()).c_str());
+    FT_LOG_INFO("Host Memory: %s", buffer_manager_->printAllocationRecords(getHostAllocator()).c_str());
+    return;
 }
 
 AllocationType DeviceBase::getMemAllocationType(const MemoryType type) {
@@ -43,7 +50,7 @@ void DeviceBase::syncCommunication() {
 
 CloneOutput DeviceBase::clone(const CloneParams& params) {
     const auto& src = params.input;
-    auto dst = allocateBuffer({src.type(), src.shape(), params.alloc_type});
+    auto dst = allocateBuffer({src.type(), src.shape(), params.alloc_type}, params.hints);
     copy({*dst, src});
     return move(dst);
 }

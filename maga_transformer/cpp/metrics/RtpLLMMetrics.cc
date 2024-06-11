@@ -8,6 +8,7 @@ AUTIL_LOG_SETUP(rtp_llm, RtpLLMStreamMetrics);
 AUTIL_LOG_SETUP(rtp_llm, RtpEmbeddingStreamMetrics);
 AUTIL_LOG_SETUP(rtp_llm, RtpLLMSchedulerMetrics);
 AUTIL_LOG_SETUP(rtp_llm, RtpLLMCacheMetrics);
+AUTIL_LOG_SETUP(rtp_llm, RtpLLMCacheReuseMetrics);
 AUTIL_LOG_SETUP(rtp_llm, RtpLLMExecutorMetrics);
 AUTIL_LOG_SETUP(rtp_llm, RtpLLMEngineMetrics);
 
@@ -29,7 +30,8 @@ bool RtpLLMStreamMetrics::init(kmonitor::MetricsGroupManager* manager) {
     REGISTER_GAUGE_MUTABLE_METRIC(total_latency_us_metric, "rtp_llm_latency_us");
     REGISTER_GAUGE_MUTABLE_METRIC(first_token_latency_us_metric, "rtp_llm_first_token_latency_us");
     REGISTER_GAUGE_MUTABLE_METRIC(wait_latency_us_metric, "rtp_llm_wait_latency_us");
-    REGISTER_GAUGE_MUTABLE_METRIC(iterate_cout_metric, "rtp_llm_iterate_cout");
+    REGISTER_GAUGE_MUTABLE_METRIC(pause_latency_us_metric, "rtp_llm_pause_latency_us");
+    REGISTER_GAUGE_MUTABLE_METRIC(iterate_count_metric, "rtp_llm_iterate_count");
     REGISTER_GAUGE_MUTABLE_METRIC(reuse_length_metric, "rtp_llm_reuse_length");
     REGISTER_GAUGE_MUTABLE_METRIC(input_token_length_metric, "rtp_llm_input_token_length");
     REGISTER_GAUGE_MUTABLE_METRIC(output_token_length_metric, "rtp_llm_output_token_length");
@@ -45,7 +47,8 @@ void RtpLLMStreamMetrics::report(const kmonitor::MetricsTags* tags, RtpLLMStream
     REPORT_GAUGE(total_latency_us);
     REPORT_GAUGE(first_token_latency_us);
     REPORT_GAUGE(wait_latency_us);
-    REPORT_GAUGE(iterate_cout);
+    REPORT_GAUGE(pause_latency_us);
+    REPORT_GAUGE(iterate_count);
     REPORT_GAUGE(reuse_length);
     REPORT_GAUGE(input_token_length);
     REPORT_GAUGE(output_token_length);
@@ -117,6 +120,15 @@ bool RtpLLMCacheMetrics::init(kmonitor::MetricsGroupManager* manager) {
 void RtpLLMCacheMetrics::report(const kmonitor::MetricsTags* tags, RtpLLMCacheMetricsCollector* collector) {
     REPORT_MUTABLE_METRIC(kv_cache_item_num_metric, collector->kv_cache_item_num);
     REPORT_MUTABLE_METRIC(kv_cache_left_seq_metric, collector->kv_cache_left_seq);
+}
+
+bool RtpLLMCacheReuseMetrics::init(kmonitor::MetricsGroupManager* manager) {
+    REGISTER_GAUGE_MUTABLE_METRIC(kv_cache_reuse_length, "rtp_llm_kv_cache_reuse_length");
+    return true;
+}
+
+void RtpLLMCacheReuseMetrics::report(const kmonitor::MetricsTags* tags, RtpLLMCacheReuseMetricsCollector* collector) {
+    REPORT_MUTABLE_METRIC(kv_cache_reuse_length, collector->kv_cache_reuse_length);
 }
 
 #undef REPORT_QPS

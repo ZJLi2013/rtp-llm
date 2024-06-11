@@ -10,9 +10,9 @@
 namespace rtp_llm {
 class QueryConverter {
 public:
-    static std::shared_ptr<GenerateStream> transQuery(const ResourceContext& resource_context, const GenerateInputPB* input);
+    static std::shared_ptr<GenerateInput> transQuery(const GenerateInputPB* input);
 
-    static void transResponse(GenerateOutputPB* output, const GenerateOutput* response);
+    static void transResponse(GenerateOutputsPB* outputs, const GenerateOutputs* response);
 
 private:
     static std::shared_ptr<GenerateConfig> transGenerateConfig(const GenerateConfigPB* config_proto);

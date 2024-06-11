@@ -7,7 +7,10 @@ import logging
 from dataclasses import dataclass, field, fields
 from enum import Enum
 from maga_transformer.utils.util import WEIGHT_TYPE
+from maga_transformer.config.task_type import TaskType, check_task_type
 from maga_transformer.distribute.worker_info import g_parallel_info, g_master_info
+from maga_transformer.ops import GptInitParameter
+from maga_transformer.utils.gemm_utils.cutlass_config import load_cutlass_gemm_config
 
 updated_params: Set[str] = set()
 
@@ -96,7 +99,8 @@ class GptInitModelParameters:
         "ref_module",
         "ref_dict",
         "tie_word_embeddings",
-        "need_ffn_act_scale"
+        "need_ffn_act_scale",
+        "task_type"
     }
 
     def __init__(self,
@@ -107,7 +111,7 @@ class GptInitModelParameters:
                  vocab_size: int,
                  **kwargs: Any):
         hidden_size = head_num * size_per_head
-        self.gpt_init_params = torch.classes.FasterTransformer.GptInitParameter(
+        self.gpt_init_params = GptInitParameter(
             head_num, size_per_head, layer_num, max_seq_len, vocab_size, hidden_size
         )
         self._model_related_types: Dict[str, str] = {
@@ -122,11 +126,13 @@ class GptInitModelParameters:
         self.medusa_config = None
 
         self.ptuning_path = None
+        self.multi_task_prompt = None
         self.pre_seq_len = 0
         self.prefix_projection = False
         self.vit_related_params: VitParameters = VitParameters()
         self.ref_module: Optional[torch.nn.Module] = None
         self.ref_dict: Dict[str, torch.Tensor] = {}
+        self.task_type = TaskType.LANGUAGE_MODEL
 
         self.tie_word_embeddings = False
         self.need_ffn_act_scale = False
@@ -141,7 +147,7 @@ class GptInitModelParameters:
 
     # read and write directly through GptInitModelParameters.k
     def __getattr__(self, k: str):
-        return self.gpt_init_params.__getattr__(k)
+        return getattr(self.gpt_init_params, k)
 
     def __setattr__(self, k: str, v: Any):
         updated_params.add(k)
@@ -150,7 +156,7 @@ class GptInitModelParameters:
         elif v is not None:
             self.gpt_init_params.__setattr__(k, v)
             if k in self._model_related_types:
-                self.gpt_init_params.__getattr__(self._model_related_types[k])()
+                getattr(self.gpt_init_params, self._model_related_types[k])()
 
     def update(self, update_params: Dict[str, Any]):
         for k, v in update_params.items():
@@ -217,6 +223,14 @@ class GptInitModelParameters:
         if self.moe_inter_padding_size <= 0:
             self.moe_inter_padding_size = self.inter_size
 
+    def update_task_prompt_tokens_id(self, tokenizer):
+        if self.multi_task_prompt:
+            for info in self.multi_task_prompt:
+                task_id: int = info['task_id']
+                prompt: str = info['prompt']
+                tokens_id = tokenizer.encode(prompt)
+                self.insertMultiTaskPromptTokens(task_id, tokens_id)
+        
     def update_task_prompt_config(self):
         prompt_file_path =  os.environ.get('MULTI_TASK_PROMPT', None)
         if not prompt_file_path:
@@ -255,6 +269,11 @@ class GptInitModelParameters:
             if 'prefix_projection' in content:
                 self.prefix_projection = content['prefix_projection']
         logging.info(f"read ptuning config, pre_seq_len:{self.pre_seq_len}, prefix_projection:{self.prefix_projection}")
+        
+    def update_task_type_use_kvcache(self):
+        self.task_type = check_task_type(self.ckpt_path)
+        self.use_kvcache = (self.task_type == TaskType.LANGUAGE_MODEL)
+        logging.info(f"model task type: {self.task_type}, use_kvcache: {self.use_kvcache}")
 
     def update_common(self,
                       ckpt_path: str,
@@ -273,7 +292,7 @@ class GptInitModelParameters:
         self.lora_infos = lora_infos
         self.tokenizer_path = tokenizer_path
         if not self.quant_algo.isQuant() and int8_mode:
-            self.quant_algo.setQuantAlgo("weight_only_per_col", 8, 0);
+            self.quant_algo.setQuantAlgo("weight_only_per_col", 8, 0)
         self.data_type = data_type.to_str()
         self.gen_num_per_circle = gen_num_per_circle
         self.ptuning_path = ptuning_path
@@ -290,6 +309,9 @@ class GptInitModelParameters:
         self.update_task_prompt_config()
         self.update_ptuning_config()
         self.update_medusa_config(ckpt_path)
+        self.update_task_type_use_kvcache()
+
+        load_cutlass_gemm_config(self.quant_algo)
 
         self.seq_size_per_block = seq_size_per_block
         logging.info(f'seq_size_per_block: {self.seq_size_per_block}')
@@ -305,8 +327,7 @@ class GptInitModelParameters:
         logging.info(f'block_nums: {self.block_nums}')
         self.scheduler_reserve_resource_ratio = int(os.environ.get('SCHEDUlER_RESERVE_RESOURCE_RATIO', 5))
         logging.info(f'scheduler_reserve_resource_ratio: {self.scheduler_reserve_resource_ratio}')
-        # TODO(xinfei.sxf) deal with old option : USE_BLOCK_CACHE
-        self.reuse_cache = bool(int(os.environ.get('REUSE_CACHE', 0)))
+        self.reuse_cache = os.environ.get('REUSE_CACHE', None) == '1' or os.environ.get('USE_BLOCK_CACHE', None) == '1'
         logging.info(f'reuse_cache: {self.reuse_cache}')
         self.pre_allocate_op_mem = bool(int(os.environ.get('PRE_ALLOCATE_OP_MEM', 1)))
         logging.info(f'pre_allocate_op_mem: {self.pre_allocate_op_mem}')
@@ -360,14 +381,23 @@ class GptInitModelParameters:
         ffn_w_count = 2 if self.activation_type == 'gelu' else 3
         if self.layer_inter_size and isinstance(self.layer_inter_size, list):
             for layer_inter_size in self.layer_inter_size:
-                layer_weight_param_count = layer_weight_param_count + layer_inter_size * hidden_size * ffn_w_count * ffn_export_num
+                if self.moe_style == 1:
+                    layer_weight_param_count = layer_weight_param_count + layer_inter_size * hidden_size * ffn_w_count * ffn_export_num
+                else:
+                    layer_weight_param_count = layer_weight_param_count + layer_inter_size * hidden_size * ffn_w_count
+                    if self.moe_style == 2:
+                        layer_weight_param_count = layer_weight_param_count + self.moe_inter_padding_size * hidden_size * ffn_w_count * ffn_export_num
 
         else:
-            layer_weight_param_count = layer_weight_param_count + self.layer_num * self.inter_size * hidden_size * ffn_w_count * ffn_export_num
-
+            if self.moe_style == 1:
+                layer_weight_param_count = layer_weight_param_count + self.layer_num * self.inter_size * hidden_size * ffn_w_count * ffn_export_num
+            else:
+                layer_weight_param_count = layer_weight_param_count + self.layer_num * self.inter_size * hidden_size * ffn_w_count
+                if self.moe_style == 2:
+                    layer_weight_param_count = layer_weight_param_count + len(self.moe_layer_index) * self.moe_inter_padding_size * hidden_size * ffn_w_count * ffn_export_num
+                
         if ffn_export_num > 1:
-            layer_weight_param_count = layer_weight_param_count + self.layer_num * hidden_size * ffn_export_num
-
+            layer_weight_param_count = layer_weight_param_count + len(self.moe_layer_index) * hidden_size * ffn_export_num
         # other small tensor
         layer_weight_param_count = layer_weight_param_count + self.layer_num * hidden_size * 11
 

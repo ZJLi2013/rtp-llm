@@ -24,6 +24,7 @@
 
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/numeric_types.h"
+#include "src/fastertransformer/cutlass/cutlass_kernels/gemm_lut_utils.h"
 
 #ifndef _WIN32
 #pragma GCC diagnostic pop
@@ -41,18 +42,13 @@ namespace kernels
 namespace cutlass_kernels
 {
 
-struct TileConfig{
-    int block_m;
-    int block_n;
-    int block_k;
-    int warp_m;
-    int warp_n;
-    int warp_k;
-};
-
 TileConfig
 get_tile_config_from_config(CutlassTileConfig tile_config) {
     switch (tile_config) {
+        case CutlassTileConfig::CtaShape16x128x64_WarpShape16x32x64:
+            return TileConfig{16, 128, 64, 16, 32, 64};
+        case CutlassTileConfig::CtaShape16x256x64_WarpShape16x64x64:
+            return TileConfig{16, 256, 64, 16, 64, 64};
         case CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64:
             return TileConfig{32, 128, 64, 32, 32, 64};
         case CutlassTileConfig::CtaShape64x64x128_WarpShape32x64x64:
@@ -166,6 +162,8 @@ std::vector<CutlassTileConfig> get_candidate_tiles(
         if (sm >= 75)
         {
             return {CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64,
+                CutlassTileConfig::CtaShape16x128x64_WarpShape16x32x64,
+                CutlassTileConfig::CtaShape16x256x64_WarpShape16x64x64,
                 CutlassTileConfig::CtaShape64x128x64_WarpShape64x32x64,
                 CutlassTileConfig::CtaShape128x128x64_WarpShape128x32x64};
         }
@@ -200,7 +198,7 @@ std::vector<CutlassGemmConfig> get_candidate_configs(int sm, const bool is_weigh
         {
             CutlassGemmConfig config{tile_config, SplitKStyle::NO_SPLIT_K, 1, stages};
             candidate_configs.push_back(config);
-            if (sm >= 75)
+            if (sm >= 70)
             {
                 for (int split_k_factor = 2; split_k_factor <= max_split_k; ++split_k_factor)
                 {
@@ -227,6 +225,7 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
     }
 
     CutlassGemmConfig best_config;
+
     // Score will be [0, 1]. The objective is to minimize this score.
     // It represents the fraction of SM resources unused in the last wave.
     float config_score = 1.0f;
@@ -255,42 +254,30 @@ CutlassGemmConfig estimate_best_config_from_occupancies(const std::vector<Cutlas
         const int ctas_in_m_dim = (m + tile_config.block_m - 1) / tile_config.block_m;
         const int ctas_in_n_dim = (n + tile_config.block_n - 1) / tile_config.block_n;
 
-        for (int split_k_factor = 1; split_k_factor <= max_split_k; ++split_k_factor)
+        const int ctas_per_wave = occupancy * multi_processor_count;
+        const int ctas_for_problem = ctas_in_m_dim * ctas_in_n_dim * candidate_config.split_k_factor;
+
+        const int num_waves_total = (ctas_for_problem + ctas_per_wave - 1) / ctas_per_wave;
+        const float num_waves_fractional = ctas_for_problem / float(ctas_per_wave);
+        const float current_score = float(num_waves_total) - num_waves_fractional;
+
+        const float score_slack = 0.1f;
+        if (current_score < config_score
+            || ((config_waves > num_waves_total) && (current_score < config_score + score_slack)))
         {
-            if (is_valid_split_k_factor(m, n, k, candidate_config, split_k_factor, workspace_bytes, is_weight_only))
-            {
-                const int ctas_per_wave = occupancy * multi_processor_count;
-                const int ctas_for_problem = ctas_in_m_dim * ctas_in_n_dim * split_k_factor;
-
-                const int num_waves_total = (ctas_for_problem + ctas_per_wave - 1) / ctas_per_wave;
-                const float num_waves_fractional = ctas_for_problem / float(ctas_per_wave);
-                const float current_score = float(num_waves_total) - num_waves_fractional;
-
-                const float score_slack = 0.1f;
-                if (current_score < config_score
-                    || ((config_waves > num_waves_total) && (current_score < config_score + score_slack)))
-                {
-                    config_score = current_score;
-                    config_waves = num_waves_total;
-                    SplitKStyle split_style
-                        = split_k_factor > 1 ? SplitKStyle::SPLIT_K_SERIAL : SplitKStyle::NO_SPLIT_K;
-                    best_config = CutlassGemmConfig{
-                        candidate_config.tile_config, split_style, split_k_factor, candidate_config.stages};
-                    current_m_tile = tile_config.block_m;
-                }
-                else if (current_score == config_score
-                    && (best_config.stages < candidate_config.stages || split_k_factor < best_config.split_k_factor
-                        || current_m_tile < tile_config.block_m))
-                {
-                    // Prefer deeper pipeline or smaller split-k
-                    SplitKStyle split_style
-                        = split_k_factor > 1 ? SplitKStyle::SPLIT_K_SERIAL : SplitKStyle::NO_SPLIT_K;
-                    best_config = CutlassGemmConfig{
-                        candidate_config.tile_config, split_style, split_k_factor, candidate_config.stages};
-                    current_m_tile = tile_config.block_m;
-                    config_waves = num_waves_total;
-                }
-            }
+            config_score = current_score;
+            config_waves = num_waves_total;
+            best_config = candidate_config;
+            current_m_tile = tile_config.block_m;
+        }
+        else if (current_score == config_score
+            && (best_config.stages < candidate_config.stages || candidate_config.split_k_factor < best_config.split_k_factor
+                || current_m_tile < tile_config.block_m))
+        {
+            // Prefer deeper pipeline or smaller split-k
+            best_config = candidate_config;
+            current_m_tile = tile_config.block_m;
+            config_waves = num_waves_total;
         }
     }
 

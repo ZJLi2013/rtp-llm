@@ -15,14 +15,14 @@ from maga_transformer.config.exceptions import ExceptionType, FtRuntimeException
 from maga_transformer.config.generate_config import GenerateConfig
 from maga_transformer.metrics import kmonitor, GaugeMetrics
 
-from maga_transformer.models.base_model import BaseModel, GenerateOutput, GenerateResponse
+from maga_transformer.models.base_model import BaseModel, GenerateOutput, GenerateOutputs, GenerateResponse
 from maga_transformer.model_factory import ModelFactory, AsyncModel, ModelConfig
 from maga_transformer.pipeline.pipeline_custom_func import PipelineCustomFunc, get_piple_custom_func
 from maga_transformer.async_decoder_engine.generate_stream import GenerateInput
 from maga_transformer.utils.word_util import remove_padding_eos, get_stop_word_slice_list, truncate_response_with_stop_words, match_stop_words
 from maga_transformer.utils.tokenizer_utils import DecodingState
 from maga_transformer.utils.util import WEIGHT_TYPE
-from maga_transformer.utils.multimodal_download import DownloadEngine
+from maga_transformer.utils.vit_process_engine import VitEngine
 
 class Pipeline(object):
     def __init__(self, model: Union[AsyncModel, BaseModel], tokenizer: Optional[PreTrainedTokenizerBase]):
@@ -31,7 +31,7 @@ class Pipeline(object):
         self._special_tokens: int = self.model.config.special_tokens
         self._img_token: str = self.model.config.vit_related_params.vit_special_tokens.get('default_image_token', '')
         self.piple_funcs: PipelineCustomFunc = get_piple_custom_func(self.model)
-        self.download_engine: DownloadEngine = DownloadEngine()
+        self.vit_engine: VitEngine = VitEngine()
 
     def stop(self):
         if isinstance(self.model, AsyncModel):
@@ -131,7 +131,7 @@ class Pipeline(object):
             prompt, images = self.piple_funcs.multimodal_modify_prompt_func(prompt, images=images, img_token=self._img_token,
                                                                             generate_config=generate_config.model_dump(), **kwargs)
             if len(images) > 0:
-                images = self.download_engine.submit(images)
+                images = self.vit_engine.submit(images, self.model.model)
 
         token_ids = self.piple_funcs.process_encode_func(prompt,
                                              generate_config=generate_config.model_dump(),
@@ -146,14 +146,18 @@ class Pipeline(object):
         return self.generate_stream(token_ids, images, generate_config, **kwargs)
 
     def decode_tokens(self,
-                      generate_output: GenerateOutput,
+                      generate_outputs: GenerateOutputs,
                       generate_config: GenerateConfig,
                       stop_word_str_list: List[str],
                       stop_word_str_slice_list: List[str],
                       decoding_state: Optional[DecodingState],
                       token_buffer: List[str],
                       **kwargs: Any) -> Tuple[List[Any], List[List[int]], List[str]]:
-        tokens = generate_output.output_ids.cpu()
+        tokens = []
+        for generate_output in generate_outputs.generate_outputs:
+            one_tokens = generate_output.output_ids.cpu()
+            tokens.append(one_tokens)
+        
         tokens = remove_padding_eos(tokens, self._special_tokens.eos_token_id)
         output_lens = [t.nelement() for t in tokens]
         texts = [self.piple_funcs.process_decode_func(tokens.tolist(),
@@ -167,6 +171,7 @@ class Pipeline(object):
         if len(token_buffer) == 0:
             token_buffer = [""] * len(texts)
 
+        #TODO(xinfei.sxf) test this
         generate_output.finished = self.piple_funcs.stop_generate_func(texts[0], **kwargs) or generate_output.finished
         if stop_word_str_list and not generate_output.finished and match_stop_words(texts[0], stop_word_str_list):
             generate_output.finished = True
@@ -194,8 +199,12 @@ class Pipeline(object):
         # TODO(xinfei.sxf) stop words etc 直接带入raw query中去
 
         if self.model.is_multimodal() and len(images) > 0:
-            images = await self.download_engine.get(images)
-            token_ids, images = await self.model.expand_token_id(token_ids, images)
+            tasks = [asyncio.create_task(self.vit_engine.get(images))]
+            await asyncio.wait(tasks)
+            images = tasks[0].result()
+            tasks = [asyncio.create_task(self.model.expand_token_id(token_ids, images))]
+            await asyncio.wait(tasks)
+            token_ids, images = tasks[0].result()
 
         token_ids = torch.tensor(token_ids, dtype=torch.int, pin_memory=True)
 
@@ -217,27 +226,25 @@ class Pipeline(object):
 
         token_buffer: List[str] = []
 
-        async for generate_output in stream:
+        async for generate_outputs in stream:
             begin_time = current_time_ms()
             generate_texts, output_lens, token_buffer = self.decode_tokens(
-                generate_output,
+                generate_outputs,
                 input.generate_config,
                 stop_word_strs, stop_word_str_slices, decoding_state, token_buffer, **kwargs)
 
-            hidden_states = generate_output.hidden_states
             if num_beams == 1:
                 generate_texts[0] = self.piple_funcs.modify_response_func(
-                    generate_texts[0], hidden_states=hidden_states,
+                    generate_texts[0], hidden_states=generate_outputs.generate_outputs[0].hidden_states,
                     generate_config=input.generate_config.model_dump(),
                     **kwargs)
 
             kmonitor.report(GaugeMetrics.POST_PIPELINE_RT_METRIC, current_time_ms() - begin_time)
 
-            yield GenerateResponse(generate_output=generate_output, generate_texts=generate_texts)
+            yield GenerateResponse(generate_outputs=generate_outputs, generate_texts=generate_texts)
 
-            if generate_output.finished:
-                kmonitor.report(GaugeMetrics.FT_ITERATE_COUNT_METRIC, generate_output.aux_info.iter_count)
+            if generate_outputs.generate_outputs[0].finished:
+                kmonitor.report(GaugeMetrics.FT_ITERATE_COUNT_METRIC, generate_outputs.generate_outputs[0].aux_info.iter_count)
                 for l in output_lens:
                     kmonitor.report(GaugeMetrics.OUTPUT_TOKEN_SIZE_METRIC, l)
                 break
-

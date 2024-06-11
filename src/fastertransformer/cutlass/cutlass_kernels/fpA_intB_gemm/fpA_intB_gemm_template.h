@@ -33,10 +33,13 @@
 #pragma GCC diagnostic pop
 #endif // #ifndef _WIN32
 
+#include "src/fastertransformer/cutlass/cutlass_kernels/gemm_lut.h"
 #include "src/fastertransformer/utils/logger.h"
 #include "src/fastertransformer/cutlass/cutlass_kernels/cutlass_heuristic.h"
 #include "src/fastertransformer/cutlass/cutlass_kernels/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "src/fastertransformer/cuda/cuda_utils.h"
+
+#include "src/fastertransformer/cuda/nvtx/nvtx_utils.h"
 
 namespace tkc = tensorrt_llm::cutlass_extensions;
 
@@ -306,6 +309,24 @@ void dispatch_gemm_to_cutlass(const T* A, const WeightType* B, const T* weight_s
     // for mixed type gemms.
     switch (gemm_config.tile_config)
     {
+    case tkc::CutlassTileConfig::CtaShape16x128x64_WarpShape16x32x64:
+        FT_CHECK_WITH_INFO(arch::kMinComputeCapability >= 75, "Invalid config on Volta");
+        if constexpr (arch::kMinComputeCapability >= 75)
+        {
+        dispatch_gemm_config<T, WeightType, arch, QuantOp, EpilogueTag, cutlass::gemm::GemmShape<16, 128, 64>,
+            cutlass::gemm::GemmShape<16, 32, 64>>(A, B, weight_scales, weight_zero_points, biases, C, m, n, k,
+            group_size, gemm_config, workspace, workspace_bytes, stream, occupancy);
+        }
+        break;
+    case tkc::CutlassTileConfig::CtaShape16x256x64_WarpShape16x64x64:
+        FT_CHECK_WITH_INFO(arch::kMinComputeCapability >= 75, "Invalid config on Volta");
+        if constexpr (arch::kMinComputeCapability >= 75)
+        {
+        dispatch_gemm_config<T, WeightType, arch, QuantOp, EpilogueTag, cutlass::gemm::GemmShape<16, 256, 64>,
+            cutlass::gemm::GemmShape<16, 64, 64>>(A, B, weight_scales, weight_zero_points, biases, C, m, n, k,
+            group_size, gemm_config, workspace, workspace_bytes, stream, occupancy);
+        }
+        break;
     case tkc::CutlassTileConfig::CtaShape32x128x64_WarpShape32x32x64:
         dispatch_gemm_config<T, WeightType, arch, QuantOp, EpilogueTag, cutlass::gemm::GemmShape<32, 128, 64>,
             cutlass::gemm::GemmShape<32, 32, 64>>(A, B, weight_scales, weight_zero_points, biases, C, m, n, k,
@@ -317,11 +338,8 @@ void dispatch_gemm_to_cutlass(const T* A, const WeightType* B, const T* weight_s
             group_size, gemm_config, workspace, workspace_bytes, stream, occupancy);
         break;
     case tkc::CutlassTileConfig::CtaShape128x128x64_WarpShape128x32x64:
-        if (arch::kMinComputeCapability < 75)
-        {
-            FT_CHECK_WITH_INFO(false, "Invalid config on Volta");
-        }
-        else
+        FT_CHECK_WITH_INFO(arch::kMinComputeCapability >= 75, "Invalid config on Volta");
+        if constexpr (arch::kMinComputeCapability >= 75)
         {
             dispatch_gemm_config<T, WeightType, arch, QuantOp, EpilogueTag, cutlass::gemm::GemmShape<128, 128, 64>,
                 cutlass::gemm::GemmShape<128, 32, 64>>(A, B, weight_scales, weight_zero_points, biases, C, m, n, k,
@@ -351,6 +369,7 @@ CutlassFpAIntBGemmRunner<T, WeightType, QuantOp>::CutlassFpAIntBGemmRunner()
     check_cuda_error(cudaGetDevice(&device));
     sm_ = fastertransformer::getSMVersion();
     check_cuda_error(cudaDeviceGetAttribute(&multi_processor_count_, cudaDevAttrMultiProcessorCount, device));
+    gemm_lut_ = get_gemm_lut<T, WeightType>();
 }
 
 template <typename T, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp>
@@ -451,39 +470,42 @@ CutlassFpAIntBGemmRunner<T, WeightType, QuantOp>::getChosenConfig(const void* A,
 {
     // Standard GEMM, so 1 "expert". We use the same function for MoE and regular FFN.
     FT_LOG_DEBUG(__PRETTY_FUNCTION__);
-    static constexpr bool          is_weight_only    = !std::is_same<T, WeightType>::value;
 
-    std::vector<tkc::CutlassGemmConfig> candidate_configs = get_candidate_configs(sm_, is_weight_only, false, false, SPLIT_K_LIMIT);
-    std::vector<int>               occupancies(candidate_configs.size());
-
-    for (size_t ii = 0; ii < candidate_configs.size(); ++ii) {
-        dispatch_to_arch<tkc::EpilogueOpDefault>((const T*)A,
-                                                 (const WeightType*)B,
-                                                 (const T*)weight_scales,
-                                                 (const T*)weight_zero_points,
-                                                 (const T*)biases,
-                                                 (T*)C,
-                                                 m,
-                                                 n,
-                                                 k,
-                                                 group_size,
-                                                 candidate_configs[ii],
-                                                 workspace_ptr,
-                                                 workspace_bytes,
-                                                 stream,
-                                                 &(occupancies[ii]));
+    GemmParamKey cur_key{m, n, k};
+    if (gemm_lut_ != nullptr)
+    {
+        auto iter = gemm_lut_->find({cur_key});
+        if (iter != gemm_lut_->end())
+        {
+            CutlassGemmConfig specified_config = iter->second;
+            return specified_config;
+        }
     }
-    static constexpr int   num_experts = 1;
-    tkc::CutlassGemmConfig chosen_config  = estimate_best_config_from_occupancies(candidate_configs,
-                                                                                 occupancies,
-                                                                                 m,
-                                                                                 n,
-                                                                                 k,
-                                                                                 num_experts,
-                                                                                 SPLIT_K_LIMIT,
-                                                                                 workspace_bytes,
-                                                                                 multi_processor_count_,
-                                                                                 is_weight_only);
+
+    static constexpr bool is_weight_only = !std::is_same<T, WeightType>::value;
+
+    std::vector<tkc::CutlassGemmConfig> candidate_configs
+        = get_candidate_configs(sm_, is_weight_only, false, false, SPLIT_K_LIMIT);
+    std::vector<tkc::CutlassGemmConfig> valid_configs;
+    for (int i = 0; i < candidate_configs.size(); i++)
+    {
+        if (is_valid_split_k_factor(
+                m, n, k, candidate_configs[i], candidate_configs[i].split_k_factor, workspace_bytes, is_weight_only))
+        {
+            valid_configs.push_back(candidate_configs[i]);
+        }
+    }
+    std::vector<int> occupancies(valid_configs.size());
+
+    for (size_t ii = 0; ii < valid_configs.size(); ++ii)
+    {
+        dispatch_to_arch<tkc::EpilogueOpDefault>((const T*) A, (const WeightType*) B, (const T*) weight_scales,
+            (const T*) weight_zero_points, (const T*) biases, (T*) C, m, n, k, group_size, valid_configs[ii],
+            workspace_ptr, workspace_bytes, stream, &(occupancies[ii]));
+    }
+    static constexpr int num_experts = 1;
+    tkc::CutlassGemmConfig chosen_config = estimate_best_config_from_occupancies(valid_configs, occupancies, m, n, k,
+        num_experts, SPLIT_K_LIMIT, workspace_bytes, multi_processor_count_, is_weight_only);
     return chosen_config;
 }
 

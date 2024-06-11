@@ -34,9 +34,27 @@ cc_library(
     copts = copts(),
     deps = [
         ":types",
-        "//src/fastertransformer/utils:logger"
+        "//src/fastertransformer/utils:logger",
+        "@havenask//aios/autil:stack_tracer",
     ],
     include_prefix = "src",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "memory_tracker",
+    hdrs = [
+        "MemoryTracker.h",
+        "TrackerAllocator.h",
+    ],
+    srcs = [
+        "MemoryTracker.cc",
+        "TrackerAllocator.cc",
+    ],
+    copts = copts(),
+    deps = [
+        ":allocator",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -60,6 +78,7 @@ cc_library(
     name = "buffer_hdr",
     hdrs = [
         "Buffer.h",
+        "BufferHelper.h"
     ],
     deps = [
         ":types_hdr",
@@ -81,6 +100,20 @@ cc_library(
     copts = copts(),
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "buffer_torch",
+    hdrs = [
+        "torch_utils/BufferTorchUtils.h",
+    ],
+    deps = [
+        ":buffer",
+        "//src/fastertransformer/utils:logger"
+    ],
+    copts = copts(),
+    visibility = ["//visibility:public"],
+)
+
 
 cc_library(
     name = "tensor_hdr",

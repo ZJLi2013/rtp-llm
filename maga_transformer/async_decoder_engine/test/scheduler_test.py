@@ -1,4 +1,5 @@
 from unittest import mock
+import os
 import torch
 import logging
 from unittest import TestCase, main
@@ -37,6 +38,7 @@ class SchedulerTest(TestCase):
                                         data_type=data_type,
                                         reserve_runtime_mem_mb=reserve_runtime_mem_mb,
                                         vocab_size=0)
+        config.reuse_cache = os.environ.get('REUSE_CACHE', None) == '1' or os.environ.get('USE_BLOCK_CACHE', None) == '1'
         cache_config = CacheConfigGenerator.create_config(config)
         return config, cache_config
 
@@ -85,12 +87,12 @@ class SchedulerTest(TestCase):
         self.assertEqual(stream1.stop_reason, '')
         self.assertEqual(stream1.seq_length, 9)
         self.assertEqual(stream1.block_indice, [[1,3]])
-        self.assertEqual(stream1.output.output_ids.numpy().tolist(), [[4]])
+        self.assertEqual(stream1.output.generate_outputs[0].output_ids.numpy().tolist(), [[4]])
         self.assertEqual(stream2.finished, True)
         self.assertEqual(stream2.stop_reason, '')
         self.assertEqual(stream2.seq_length, 3)
         self.assertEqual(stream2.block_indice, [[]])
-        self.assertEqual(stream2.output.output_ids.numpy().tolist(), [[6]])
+        self.assertEqual(stream2.output.generate_outputs[0].output_ids.numpy().tolist(), [[6]])
 
         self.assertEqual(scheduler._stream_cache_manager.cache_manager_.free_block_nums, 5)
 

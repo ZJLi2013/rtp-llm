@@ -84,9 +84,9 @@ public:
     int64_t                               bos_token_id_ = -1;
     int64_t                               eos_token_id_ = 0;
     int64_t                               pad_token_id_ = 0;
-    c10::intrusive_ptr<RoleSpecialTokens> user_;
-    c10::intrusive_ptr<RoleSpecialTokens> assistant_;
-    c10::intrusive_ptr<RoleSpecialTokens> system_;
+    RoleSpecialTokens user_;
+    RoleSpecialTokens assistant_;
+    RoleSpecialTokens system_;
     std::vector<std::vector<int64_t>>     stop_words_list_;
     std::vector<std::string>              stop_words_str_;
 };
@@ -121,10 +121,10 @@ public:
 
     int64_t rotary_embedding_dim_      = 0;
     int64_t rotary_embedding_style_    = 0;
-    int64_t rotary_embedding_base_     = 10000;
-    double  dynamic_embedding_scalar_  = 0.0;
+    int64_t position_ids_style_        = 0;
+    float rotary_embedding_base_     = 10000.f;
+    double  rotary_embedding_scale_  = 1.0;
     int64_t dynamic_embedding_max_pos_ = 0;
-    int64_t position_embeddings_scale_ = 1;
     int64_t base_scale_                = 1;
     double  input_embedding_scalar_    = 1; // for Gemma, hidden_states = hidden_states * (hidden_size**0.5)
 
@@ -158,6 +158,7 @@ public:
     bool has_moe_norm_               = false;
     double logit_scale_              = 1.0;
     bool is_causal_                  = true;
+    bool use_kvcache_                = true;
 
     std::string tokenizer_path_    = "";
     std::string ckpt_path_         = "";
@@ -165,8 +166,8 @@ public:
     bool        prefix_projection_ = false;
     bool        using_hf_sampling_ = false;
 
-    c10::intrusive_ptr<SpecialTokens> special_tokens_;
-    c10::intrusive_ptr<QuantAlgo> quant_algo_;
+    SpecialTokens special_tokens_;
+    QuantAlgo quant_algo_;
 
     // async mode config
     int64_t max_generate_batch_size_ = 1;
@@ -192,7 +193,9 @@ public:
     int64_t     tp_size_        = 1;
     int64_t     tp_rank_        = 0;
 
-    std::map<int, std::vector<int>> multi_task_prompt_tokens;
+    bool use_rpc_ = false;
+
+    std::map<int, std::vector<int>> multi_task_prompt_tokens_;
 
     GptInitParameter();
 
@@ -200,10 +203,13 @@ public:
         int64_t head_num, int64_t size_per_head, int64_t num_layers, int64_t max_seq_len,
         int64_t vocab_size, int64_t hidden_size);
 
+    void insertMultiTaskPromptTokens(int64_t task_id, std::vector<int64_t> tokens_id);
     void setLayerNormType();
     void setNormType();
     void setActivationType();
     bool isGatedActivation();
 };
+
+void registerGptInitParameter(py::module m);
 
 }

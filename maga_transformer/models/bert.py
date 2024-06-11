@@ -9,6 +9,7 @@ from maga_transformer.config.task_type import TaskType
 from maga_transformer.models.gpt import GPT
 from maga_transformer.models.downstream_modules.custom_module import CustomModule
 from maga_transformer.models.downstream_modules.classifier.roberta_classifier import RobertaClassifierModule
+from maga_transformer.models.downstream_modules import RobertaRerankerModule
 from maga_transformer.models.bert_weight import BertWeightInfo, RobertaWeightInfo
 from maga_transformer.model_factory_register import register_model
 from transformers import AutoTokenizer
@@ -79,16 +80,19 @@ class Roberta(Bert):
     def load_custom_module(self) -> Optional[CustomModule]:
         if self.task_type == TaskType.SEQ_CLASSIFICATION:
             return RobertaClassifierModule(self.config, self.tokenizer)
+        elif self.task_type == TaskType.RERANKER:
+            return RobertaRerankerModule(self.config, self.tokenizer)
         return super().load_custom_module()
 
     @classmethod
     def from_huggingface(cls, config: GptInitModelParameters, config_json: Dict[str, Any]):
         Bert.from_huggingface(config, config_json)
         config.special_tokens.pad_token_id = config_json['pad_token_id']
+        config.position_ids_style = 1
 
     def create_context_position_ids(self, input_lengths: List[int]):
         pad_index = self.config.special_tokens.pad_token_id
         return torch.concat([torch.arange(pad_index + 1, input_length + pad_index + 1, dtype=torch.int32) for input_length in input_lengths], dim=0)
 
 register_model('bert', Bert, ['BertModel', 'BertForMaskedLM', 'BertForSequenceClassification'])
-register_model('roberta', Roberta, ['XLMRobertaModel', 'RobertaModel'])
+register_model('roberta', Roberta, ['XLMRobertaModel', 'RobertaModel', "XLMRobertaForSequenceClassification"])

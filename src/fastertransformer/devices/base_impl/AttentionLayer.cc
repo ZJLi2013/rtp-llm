@@ -15,6 +15,11 @@ AttentionLayerOutput DeviceBase::attentionLayer(const AttentionLayerParams& para
     const auto &qkv_weight = params.weights.qkv_weight;
     const auto &output_weight = params.weights.output_weight;
 
+    const auto generate_batch_size = sequence_lengths.shape()[0];
+    const auto context_batch_size = input_lengths.shape()[0] - generate_batch_size;
+    const auto context_token_num = params.common.context_token_num;
+    const auto h_token_num = context_token_num + generate_batch_size;
+
     RUNTIME_ASSERT_OP_ARG(!params.residual, "default attention layer impl does not support residual!");
 
     const auto &kv_cache_blocks = params.common.kv_cache_blocks;
@@ -31,19 +36,19 @@ AttentionLayerOutput DeviceBase::attentionLayer(const AttentionLayerParams& para
     // typically local_head_num * size_per_head + 2 * local_head_num_kv * size_per_head
     const auto qkv_merged_size = qkv_weight->kernel->shape()[1];
 
-    if (qkv_weight->bias) {
-        FT_LOG_WARNING("AttentionLayer bias is not supported yet, ignored");
-    }
+    // attention layer output is preallocated to avoid memory fragmentation
+    // note that this output is returned and further used as residual
+    auto output = params.output ? params.output
+                : allocateBuffer({input.type(), {h_token_num, output_weight->kernel->shape()[1]}},
+                                 {"attn_layer_out"});
+
+    // NOTE: Cuda implementation fused adding qkv_weight->bias in invokeAddFusedQKVBiasTranspose kernel call.
+    // other devices need to be careful about this.
+    // maybe add a device property here.
     const auto qkv = gemm({input, *(qkv_weight->kernel)});
     printBufferData(input, "qkv input");
     printBufferData(*(qkv_weight->kernel), "qkv kernel");
     printBufferData(*qkv, "qkv");
-
-    const auto generate_batch_size = sequence_lengths.shape()[0];
-    const auto context_batch_size = input_lengths.shape()[0] - generate_batch_size;
-
-    const auto context_token_num = params.common.context_token_num;
-    const auto h_token_num = context_token_num + generate_batch_size;
 
     const auto qkv_output = allocateBuffer({input.type(), {h_token_num, qkv_hidden_size}}, {"qkv_output"});
 
@@ -72,7 +77,7 @@ AttentionLayerOutput DeviceBase::attentionLayer(const AttentionLayerParams& para
     }
     printBufferData(*qkv_output, "qkv_output");
 
-    auto output = gemm({*qkv_output, *(output_weight->kernel)});
+    gemm({*qkv_output, *(output_weight->kernel), nullopt, output});
 
     return {move(output)};
 }

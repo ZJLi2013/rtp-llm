@@ -41,7 +41,7 @@ void CacheManager::reportMetricsLoop() {
         if (metrics_reporter_) {
             RtpLLMCacheMetricsCollector collector;
             collector.kv_cache_item_num = block_cache_.size();
-            collector.kv_cache_left_seq = freeBlockNums();
+            collector.kv_cache_left_seq = freeBlockNums() * seq_size_per_block_;
             metrics_reporter_->report<RtpLLMCacheMetrics, RtpLLMCacheMetricsCollector>(nullptr, &collector);
             sleep(1); // 1s
         }
@@ -51,6 +51,7 @@ void CacheManager::reportMetricsLoop() {
 void CacheManager::initFreeBlock(const CacheConfig& config) {
     int block_nums = config.block_nums;
 
+    // TODO(xinfei.sxf) sync block nums
     // Assuming g_parallel_info.tp_size and other global variables/functions are defined elsewhere.
     // if (g_parallel_info.tp_size > 1) {
     //     // Use NCCL communication functions to broadcast and synchronize block_nums across devices.
@@ -77,7 +78,7 @@ void CacheManager::initKvCache(const CacheConfig& config) {
                                                                       (size_t)config.seq_size_per_block,
                                                                       (size_t)config.size_per_head},
                                                   ft::AllocationType::DEVICE},
-                                                 {});
+                                                 {"k_cache_blocks"});
     kv_cache_.v_blocks = device_->allocateBuffer({config.dtype,
                                                   std::vector<size_t>{(size_t)config.layer_num,
                                                                       (size_t)block_nums_,
@@ -85,7 +86,7 @@ void CacheManager::initKvCache(const CacheConfig& config) {
                                                                       (size_t)config.seq_size_per_block,
                                                                       (size_t)config.size_per_head},
                                                   ft::AllocationType::DEVICE},
-                                                 {});
+                                                 {"v_cache_blocks"});
 
     if (config.dtype == ft::DataType::TYPE_INT8) {
         kv_cache_.k_scale = device_->allocateBuffer({ft::DataType::TYPE_FP32,
@@ -94,14 +95,14 @@ void CacheManager::initKvCache(const CacheConfig& config) {
                                                                          (size_t)config.local_head_num_kv,
                                                                          (size_t)config.seq_size_per_block},
                                                      ft::AllocationType::DEVICE},
-                                                    {});
+                                                    {"k_cache_scales"});
         kv_cache_.v_scale = device_->allocateBuffer({ft::DataType::TYPE_FP32,
                                                      std::vector<size_t>{(size_t)config.layer_num,
                                                                          (size_t)block_nums_,
                                                                          (size_t)config.local_head_num_kv,
                                                                          (size_t)config.seq_size_per_block},
                                                      ft::AllocationType::DEVICE},
-                                                    {});
+                                                    {"v_cache_scales"});
     }
 }
 
@@ -149,7 +150,7 @@ std::tuple<bool, std::vector<int>, int> CacheManager::mallocWithCacheImpl(int   
         FT_LOG_ERROR("reuse_block_num[%d] should not be greater than want_block_nums[%d], "
                     "and reuse_block_num[%d] should not be greater than cache_block_num[%d]",
                     reuse_block_num, want_block_nums, reuse_block_num, cache_block_num);
-        return {false, {}, 0}; 
+        return {false, {}, 0};
     }
     assert(reuse_block_num <= want_block_nums);
     assert(reuse_block_num <= cache_block_num);
@@ -161,7 +162,12 @@ std::tuple<bool, std::vector<int>, int> CacheManager::mallocWithCacheImpl(int   
     auto [success, new_blocks] = mallocImpl(want_block_nums - reuse_block_num);
     if (success) {
         reuse_blocks.insert(reuse_blocks.end(), new_blocks.begin(), new_blocks.end());
-        // TODO(xinfei.sxf) kmonitor.report(GaugeMetrics::KV_CACHE_REUSE_LENGTH_METRIC, reuse_length);
+        if (metrics_reporter_) {
+            RtpLLMCacheReuseMetricsCollector collector;
+            collector.kv_cache_reuse_length = reuse_length;
+            metrics_reporter_->report<RtpLLMCacheReuseMetrics, RtpLLMCacheReuseMetricsCollector>(nullptr, &collector);
+        }
+
         return {true, reuse_blocks, reuse_length};
     } else {
         free(reuse_blocks);

@@ -17,6 +17,7 @@
 #pragma once
 #include "src/fastertransformer/cutlass/cutlass_kernels/weight_only_quant_op.h"
 #include "src/fastertransformer/cutlass/cutlass_kernels/gemm_configs.h"
+#include "src/fastertransformer/cutlass/cutlass_kernels/gemm_lut.h"
 #include <cuda_runtime_api.h>
 
 namespace tkc = tensorrt_llm::cutlass_extensions;
@@ -26,16 +27,6 @@ namespace kernels
 {
 namespace cutlass_kernels
 {
-
-// TRT Activation Type does not have Gelu or Silu
-// enum class ActivationType
-// {
-//     Gelu,
-//     Relu,
-//     Silu,
-//     Identity,
-//     InvalidType
-// };
 
 /*
   This runner only supports:
@@ -129,6 +120,7 @@ private:
 private:
     int sm_;
     int multi_processor_count_;
+    const GemmLut* gemm_lut_;
 };
 
 

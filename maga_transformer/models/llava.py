@@ -5,8 +5,7 @@ import re
 
 from typing import List, Any, Dict, Tuple, Union
 from PIL import Image
-from transformers.models.llama.tokenization_llama import LlamaTokenizer
-from transformers import AutoConfig, CLIPVisionConfig
+from transformers import AutoConfig, CLIPVisionConfig, AutoTokenizer
 
 from maga_transformer.config.gpt_init_model_parameters import GptInitModelParameters
 from maga_transformer.models.llava_weight import LlavaWeightInfo
@@ -25,8 +24,9 @@ class LlavaTokenizer(object):
                  mm_use_im_patch_token: bool,
                  mm_use_im_start_end: bool, 
                  vit_special_token_ids: Dict[str, Any],
-                 vit_special_tokens: Dict[str, Any]):
-        self.tokenizer = LlamaTokenizer.from_pretrained(tokenzier_path)
+                 vit_special_tokens: Dict[str, Any],
+                 bos_id: int = 1):
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenzier_path)
         self.mm_use_im_patch_token = mm_use_im_patch_token
         self.mm_use_im_start_end = mm_use_im_start_end
 
@@ -42,8 +42,7 @@ class LlavaTokenizer(object):
         self.default_image_token = vit_special_tokens["default_image_token"]
         self.default_im_start_token = vit_special_tokens["default_im_start_token"]
         self.default_im_end_token = vit_special_tokens["default_im_end_token"]
-        self.bos_id = self.tokenizer.sp_model.bos_id()
-        
+        self.bos_id = bos_id
 
     def encode(self, s: str) -> List[int]:
         replace_token = self.default_image_token
@@ -72,11 +71,21 @@ class LlavaTokenizer(object):
     def decode(self, t: List[int]) -> str:
         return self.tokenizer.decode(t)
 
+    def apply_chat_template(self, messages, **kwargs):
+        return self.tokenizer.apply_chat_template(messages, **kwargs)
+
 class Llava(Llama, MultiModalMixin):
     def __init__(self, config: GptInitModelParameters):
-        self.visual = LlavaImageEmbedding(config.vit_related_params.config)
+        with torch.cuda.device(torch.device('cuda:0')):
+            self.visual = LlavaImageEmbedding(config.vit_related_params.config)
         self.nccl_op_ = NcclOp()
-        config.vit_related_params.vit_weights = BaseVitWeights({"mm_projector": self.visual.mm_projector}, True)
+        vit_weight_dict: Dict[str, Any] = {"mm_projector": self.visual.mm_projector}
+        if config.vit_related_params.config["unfreeze_mm_vision_tower"] or \
+            "mm_vision_tower" in config.vit_related_params.config["mm_tunable_parts"]:
+            vit_weight_dict["vision_tower"] = self.visual.vision_tower
+        if "unpad" in config.vit_related_params.config.get("mm_patch_merge_type", "flat"):
+            vit_weight_dict["image_newline"] = self.visual.image_newline
+        config.vit_related_params.vit_weights = BaseVitWeights(vit_weight_dict, True)
         Llama.__init__(self, config)
 
     @classmethod
@@ -145,10 +154,14 @@ class Llava(Llama, MultiModalMixin):
                 ("mm_use_im_start_end", False),
                 ("image_aspect_ratio", None),
                 ("tune_mm_mlp_adapter", False),
+                ("image_grid_pinpoints", []),
                 ("mm_projector_type", "linear"),
+                ("mm_patch_merge_type", "flat"),
                 ("hidden_size", 0),
                 ("mm_vision_select_layer", None),
-                ("mm_vision_select_feature", "patch")
+                ("mm_vision_select_feature", "patch"),
+                ("unfreeze_mm_vision_tower", False),
+                ("mm_tunable_parts", "")
             ]
 
             for param_name, default_value in vit_related_params_list:
@@ -178,7 +191,8 @@ class Llava(Llama, MultiModalMixin):
                               config.vit_related_params.config["mm_use_im_patch_token"],
                               config.vit_related_params.config["mm_use_im_start_end"],
                               config.vit_related_params.vit_special_token_ids,
-                              config.vit_related_params.vit_special_tokens)
+                              config.vit_related_params.vit_special_tokens,
+                              config.special_tokens.bos_token_id)
     
     def async_input_word_embedding(self, inputs: torch.Tensor, images: List[torch.Tensor]):
         return MultiModalMixin.async_input_word_embedding(self, inputs, images)
@@ -187,7 +201,7 @@ class Llava(Llama, MultiModalMixin):
         return MultiModalMixin.input_word_embedding(self, inputs, images)
 
     @torch.no_grad()
-    def expand_token_id(self, token_ids: List[int], images: List[Image.Image]) -> Tuple[List[int], Union[torch.Tensor, List[torch.Tensor]]]:
+    def expand_token_id(self, token_ids: List[int], images: List[torch.Tensor]) -> Tuple[List[int], Union[torch.Tensor, List[torch.Tensor]]]:
         assert self.config.vit_related_params.image_expand_token is not None
         image_token_index = self.config.vit_related_params.vit_special_token_ids["image_token_index"]
         if token_ids.count(image_token_index) != len(images):
@@ -195,8 +209,8 @@ class Llava(Llama, MultiModalMixin):
 
         image_expand_token: int = self.config.vit_related_params.image_expand_token
         image_num = len(images)
-        image_features = self.visual.image_embedding(images, self.device)
 
+        image_features = images
         total_image_tokens = 0
         if isinstance(image_features, torch.Tensor):
             total_image_tokens += image_features.shape[0] * image_features.shape[1]
