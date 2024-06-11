@@ -22,9 +22,9 @@ public:
 public:
     // device-independence op implementations
     CloneOutput clone(const CloneParams& params) override;
-//     AttentionLayerOutput attentionLayer(const AttentionLayerParams& params) override;
-//     FfnLayerOutput ffnLayer(const FfnLayerParams& params) override;
-//     LoraLinearOutput loraLinear(const LoraLinearParams& params) override;
+    AttentionLayerOutput attentionLayer(const AttentionLayerParams& params) override;
+    FfnLayerOutput ffnLayer(const FfnLayerParams& params) override;
+    LoraLinearOutput loraLinear(const LoraLinearParams& params) override;
 
 protected:
     BufferStatus queryBufferStatus();
