@@ -63,9 +63,9 @@ private:
     std::unordered_map<void*, AllocationRecord> allocation_records_;
     std::shared_mutex mutex_;
 
-    size_t device_max_allocated_bytes_;
-    const bool trace_memory_;
-    const bool trace_malloc_stack_;
+    // size_t device_max_allocated_bytes_;
+    // const bool trace_memory_;
+    // const bool trace_malloc_stack_;
 };
 
 } // namespace fastertransformer
