@@ -916,6 +916,11 @@ def _create_local_rocm_repository(repository_ctx):
     )
 
 def _create_remote_rocm_repository(repository_ctx, remote_config_repo):
+    print("[BAZEL DEBUG]: create_remote_rocm_repostitory")
+    rocm_config = _get_rocm_config(repository_ctx)
+    # rocm_toolkit_path
+    rocm_toolkit_path = rocm_config.rocm_toolkit_path
+    print("rocm_toolkit_path: %s" % rocm_toolkit_path)
     """Creates pointers to a remotely configured repo set up to build with ROCm."""
     _tpl(
         repository_ctx,
